@@ -1,6 +1,7 @@
 <script setup>
 defineProps({
-  currentPath: { type: String, default: '/' }
+  currentPath: { type: String, default: '/' },
+  isAdmin: { type: Boolean, default: false }
 })
 </script>
 
@@ -13,6 +14,10 @@ defineProps({
     <a href="/history" :class="currentPath.includes('/history') ? 'text-brand font-bold' : 'text-slate-400 font-medium'" class="flex flex-col items-center gap-1 transition">
       <svg class="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
       <span class="text-[10px]">Lịch sử</span>
+    </a>
+    <a v-if="isAdmin" href="/admin" :class="currentPath.startsWith('/admin') ? 'text-brand font-bold' : 'text-slate-400 font-medium'" class="flex flex-col items-center gap-1 transition">
+      <svg class="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3l7 4v5c0 4.5-2.8 7.7-7 9-4.2-1.3-7-4.5-7-9V7l7-4z" /><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4" /></svg>
+      <span class="text-[10px]">Quản trị</span>
     </a>
     <a href="/info" :class="currentPath.includes('/info') ? 'text-brand font-bold' : 'text-slate-400 font-medium'" class="flex flex-col items-center gap-1 transition">
       <svg class="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
