@@ -2,8 +2,8 @@
 import { ref, onMounted } from 'vue'
 import Navbar from '@/components/Navbar.vue'
 import BottomNav from '@/components/BottomNav.vue'
+import { api } from '@/services/apiClient.js'
 
-const url = import.meta.env.VITE_API_URL
 const history = ref([])
 const user = ref({ name: '', role: '' })
 const currentPath = ref(window.location.pathname)
@@ -38,14 +38,8 @@ function formatTime(dateTimeStr) {
 }
 
 async function fetchHistory() {
-  const token = sessionStorage.getItem('classhub-token')
   try {
-    const response = await fetch(url + '/history/get-history', { headers: { 'Authorization': `Bearer ${token}` }})
-    if (response.ok) {
-      history.value = await response.json()
-    } else {
-      if (response.status === 401) logout()
-    }
+    history.value = await api.get('/history/get-history')
   } catch (err) { console.error('Lỗi khi lấy lịch sử:', err) }
 }
 
@@ -117,6 +111,6 @@ onMounted(() => {
       </div>
     </div>
 
-    <BottomNav :currentPath="currentPath" />
+    <BottomNav :currentPath="currentPath" :is-admin="user.role === 'ADMIN'" />
   </main>
 </template>
