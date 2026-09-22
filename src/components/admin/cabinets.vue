@@ -1,10 +1,8 @@
 <script setup>
 import AdminLayout from '@/components/admin/layout/AdminLayout.vue'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import * as signalR from '@microsoft/signalr'
-
-const url = import.meta.env.VITE_API_URL || 'http://localhost:5146/api'
-const hubUrl = url.replace(/\/api\/?$/, '')
+import { api } from '@/services/apiClient.js'
+import { cabinetHub } from '@/services/cabinetHub.js'
 
 const search = ref('')
 const statusFilter = ref('Trạng thái tủ')
@@ -13,23 +11,14 @@ const networkFilter = ref('Tình trạng mạng')
 const isLoading = ref(false)
 const cabinets = ref([])
 
-let hubConnection = null
+let unsubscribeCabinetStatus = null
 
 // HÀM NÀY CHỈ CHẠY 1 LẦN DUY NHẤT KHI VÀO TRANG HOẶC BẤM NÚT LÀM MỚI THỦ CÔNG
 async function fetchCabinets() {
   isLoading.value = true
-  const token = sessionStorage.getItem('classhub-token')
 
   try {
-    const res = await fetch(`${url}/admin/cabinets`, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
-    })
-    if (res.ok) {
-      cabinets.value = await res.json()
-    }
+    cabinets.value = await api.get('/admin/cabinets')
   } catch (err) {
     console.error('Lỗi tải danh sách tủ:', err)
   } finally {
@@ -42,13 +31,8 @@ onMounted(async () => {
   await fetchCabinets()
 
   // 2. Khởi tạo SignalR
-  hubConnection = new signalR.HubConnectionBuilder()
-    .withUrl(`${hubUrl}/hub/cabinet`)
-    .withAutomaticReconnect([0, 2000, 5000, 10000])
-    .build()
-
   // 3. LẮNG NGHE VÀ CẬP NHẬT VI PHÂN (DELTA UPDATE) - KHÔNG GỌI LẠI HTTP GET
-  hubConnection.on('CabinetStatusChanged', (data) => {
+  unsubscribeCabinetStatus = cabinetHub.subscribe('CabinetStatusChanged', (data) => {
     const target = cabinets.value.find(c => 
       String(c.roomId || '').toLowerCase() === String(data.roomId || '').toLowerCase() ||
       String(c.id) === String(data.roomId)
@@ -67,7 +51,7 @@ onMounted(async () => {
   })
 
   try {
-    await hubConnection.start()
+    await cabinetHub.start()
     console.log('[Cabinets] Da ket noi Realtime Hub!')
   } catch (err) {
     console.error('[Cabinets] Loi ket noi SignalR:', err)
@@ -75,7 +59,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  if (hubConnection) hubConnection.stop()
+  if (unsubscribeCabinetStatus) unsubscribeCabinetStatus()
 })
 
 // Mở khóa khẩn cấp từ xa
@@ -90,45 +74,21 @@ async function handleRemoteOpen(cab) {
   }
   if (!confirm(`Bạn có chắc chắn muốn gửi lệnh MỞ KHÓA cho ${cab.name}?`)) return
 
-  const token = sessionStorage.getItem('classhub-token')
   try {
-    const res = await fetch(`${url}/admin/cabinets/remote-open/${cab.id}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
-    })
-
-    const data = await res.json()
-    if (res.ok) {
-      // Tự cập nhật giao diện local ngay
-      cab.doorCondition = 'Mở'
-      cab.isDoorOpen = true
-    } else {
-      alert(data.message || 'Không thể mở tủ!')
-    }
+    await api.post(`/admin/cabinets/remote-open/${cab.id}`)
+    cab.doorCondition = 'Mở'
+    cab.isDoorOpen = true
   } catch (err) {
-    alert('Lỗi kết nối máy chủ!')
+    alert(err.message || 'Lỗi kết nối máy chủ!')
   }
 }
 
 // Khóa tủ từ xa
 async function handleRemoteLock(cab) {
-  const token = sessionStorage.getItem('classhub-token')
   try {
-    const res = await fetch(`${url}/admin/cabinets/remote-lock/${cab.id}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
-    })
-
-    if (res.ok) {
-      cab.doorCondition = 'Đóng'
-      cab.isDoorOpen = false
-    }
+    await api.post(`/admin/cabinets/remote-lock/${cab.id}`)
+    cab.doorCondition = 'Đóng'
+    cab.isDoorOpen = false
   } catch (err) {
     console.error(err)
   }
@@ -139,24 +99,11 @@ async function handleToggleMaintenance(cab) {
   const actionText = cab.status === 'Bảo trì' ? 'KHÔI PHỤC HOẠT ĐỘNG' : 'CHUYỂN SANG BẢO TRÌ'
   if (!confirm(`Bạn có chắc muốn ${actionText} cho ${cab.name}?`)) return
 
-  const token = sessionStorage.getItem('classhub-token')
   try {
-    const res = await fetch(`${url}/admin/cabinets/${cab.id}/toggle-maintenance`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
-    })
-
-    const data = await res.json()
-    if (res.ok) {
-      cab.status = data.status || (cab.status === 'Bảo trì' ? 'Trống' : 'Bảo trì')
-    } else {
-      alert(data.message || 'Thao tác thất bại!')
-    }
+    const data = await api.patch(`/admin/cabinets/${cab.id}/toggle-maintenance`)
+    cab.status = data?.status || (cab.status === 'Bảo trì' ? 'Trống' : 'Bảo trì')
   } catch (err) {
-    alert('Lỗi kết nối máy chủ!')
+    alert(err.message || 'Lỗi kết nối máy chủ!')
   }
 }
 
