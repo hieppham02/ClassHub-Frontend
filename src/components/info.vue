@@ -43,6 +43,6 @@ function logout() {
       </div>
     </section>
 
-    <BottomNav :currentPath="currentPath" />
+    <BottomNav :currentPath="currentPath" :is-admin="user.role === 'ADMIN'" />
   </main>
 </template>

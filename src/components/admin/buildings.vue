@@ -1,8 +1,7 @@
 <script setup>
 import AdminLayout from '@/components/admin/layout/AdminLayout.vue'
 import { ref, reactive, onMounted } from 'vue'
-
-const url = import.meta.env.VITE_API_URL || 'http://localhost:5146/api'
+import { api } from '@/services/apiClient.js'
 
 const activeTab = ref('buildings')
 const isLoading = ref(false)
@@ -33,20 +32,19 @@ const roomForm = reactive({
 // 1. Tải danh sách Tòa nhà & Phòng học từ API
 async function fetchData() {
   isLoading.value = true
-  const token = sessionStorage.getItem('classhub-token')
-  const headers = {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`
-  }
 
   try {
-    const [resB, resR] = await Promise.all([
-      fetch(`${url}/admin/buildings`, { headers }),
-      fetch(`${url}/admin/rooms`, { headers })
+    const [buildingsResult, roomsResult] = await Promise.allSettled([
+      api.get('/admin/buildings'),
+      api.get('/admin/rooms')
     ])
 
-    if (resB.ok) buildings.value = await resB.json()
-    if (resR.ok) rooms.value = await resR.json()
+    if (buildingsResult.status === 'fulfilled') buildings.value = buildingsResult.value
+    if (roomsResult.status === 'fulfilled') rooms.value = roomsResult.value
+
+    const failedRequest = [buildingsResult, roomsResult]
+      .find((result) => result.status === 'rejected')
+    if (failedRequest) throw failedRequest.reason
   } catch (err) {
     console.error('Lỗi khi tải dữ liệu:', err)
   } finally {
@@ -108,31 +106,19 @@ function closeModal() {
 async function saveBuilding() {
   if (!buildingForm.id || !buildingForm.name) return alert('Vui lòng nhập đủ thông tin!')
 
-  const token = sessionStorage.getItem('classhub-token')
-  const endpoint = isEditing.value 
-    ? `${url}/admin/buildings/${buildingForm.id}` 
-    : `${url}/admin/buildings`
+  const endpoint = isEditing.value
+    ? `/admin/buildings/${buildingForm.id}`
+    : '/admin/buildings'
 
   try {
-    const res = await fetch(endpoint, {
-      method: isEditing.value ? 'PUT' : 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify(buildingForm)
-    })
-
-    const data = await res.json()
-    if (res.ok) {
-      alert(data.message || 'Thành công!')
-      closeModal()
-      fetchData()
-    } else {
-      alert(data.message || 'Thao tác thất bại!')
-    }
+    const data = isEditing.value
+      ? await api.put(endpoint, buildingForm)
+      : await api.post(endpoint, buildingForm)
+    alert(data?.message || 'Thành công!')
+    closeModal()
+    fetchData()
   } catch (err) {
-    alert('Lỗi kết nối máy chủ!')
+    alert(err.message || 'Lỗi kết nối máy chủ!')
   }
 }
 
@@ -140,31 +126,19 @@ async function saveBuilding() {
 async function saveRoom() {
   if (!roomForm.id || !roomForm.name || !roomForm.buildingId) return alert('Vui lòng nhập đủ thông tin phòng!')
 
-  const token = sessionStorage.getItem('classhub-token')
-  const endpoint = isEditing.value 
-    ? `${url}/admin/rooms/${roomForm.id}` 
-    : `${url}/admin/rooms`
+  const endpoint = isEditing.value
+    ? `/admin/rooms/${roomForm.id}`
+    : '/admin/rooms'
 
   try {
-    const res = await fetch(endpoint, {
-      method: isEditing.value ? 'PUT' : 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify(roomForm)
-    })
-
-    const data = await res.json()
-    if (res.ok) {
-      alert(data.message || 'Thành công!')
-      closeModal()
-      fetchData()
-    } else {
-      alert(data.message || 'Thao tác thất bại!')
-    }
+    const data = isEditing.value
+      ? await api.put(endpoint, roomForm)
+      : await api.post(endpoint, roomForm)
+    alert(data?.message || 'Thành công!')
+    closeModal()
+    fetchData()
   } catch (err) {
-    alert('Lỗi kết nối máy chủ!')
+    alert(err.message || 'Lỗi kết nối máy chủ!')
   }
 }
 
@@ -172,27 +146,14 @@ async function saveRoom() {
 async function deleteItem(type, id, name) {
   if (!confirm(`Bạn có chắc chắn muốn xóa ${type === 'b' ? 'Tòa nhà' : 'Phòng học'}: ${name} (${id})?`)) return
 
-  const token = sessionStorage.getItem('classhub-token')
-  const endpoint = type === 'b' ? `${url}/admin/buildings/${id}` : `${url}/admin/rooms/${id}`
+  const endpoint = type === 'b' ? `/admin/buildings/${id}` : `/admin/rooms/${id}`
 
   try {
-    const res = await fetch(endpoint, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
-    })
-
-    const data = await res.json()
-    if (res.ok) {
-      alert(data.message || 'Đã xóa thành công!')
-      fetchData()
-    } else {
-      alert(data.message || 'Không thể xóa!')
-    }
+    const data = await api.delete(endpoint)
+    alert(data?.message || 'Đã xóa thành công!')
+    fetchData()
   } catch (err) {
-    alert('Lỗi kết nối máy chủ!')
+    alert(err.message || 'Lỗi kết nối máy chủ!')
   }
 }
 </script>

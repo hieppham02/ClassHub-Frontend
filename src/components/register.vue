@@ -1,7 +1,6 @@
 <script setup>
 import { ref } from 'vue'
-
-const url = import.meta.env.VITE_API_URL || 'http://localhost:5146/api'
+import { api } from '@/services/apiClient.js'
 
 const maSv = ref('')
 const hoTen = ref('')
@@ -39,34 +38,22 @@ async function register() {
 
   isLoading.value = true
   try {
-    const response = await fetch(url + '/auth/register', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        MaSV: maSv.value,
-        HoTen: hoTen.value,
-        Email: email.value,
-        MatKhau: matKhau.value,
-        Sdt: sdt.value,
-        TenLop: tenLop.value
-      })
-    })
+    await api.post('/auth/register', {
+      MaSV: maSv.value,
+      HoTen: hoTen.value,
+      Email: email.value,
+      MatKhau: matKhau.value,
+      Sdt: sdt.value,
+      TenLop: tenLop.value
+    }, { auth: false })
 
-    const data = await response.json()
-
-    if (response.ok) {
-      success.value = 'Đăng ký thành công! Đang chuyển hướng...'
-      setTimeout(() => {
-        window.location.href = '/login'
-      }, 1500)
-    } else {
-      error.value = data.message || 'Có lỗi xảy ra, không thể đăng ký!'
-    }
+    success.value = 'Đăng ký thành công! Đang chuyển hướng...'
+    setTimeout(() => {
+      window.location.href = '/login'
+    }, 1500)
   } catch (err) {
     console.error('Lỗi API Đăng ký:', err)
-    error.value = 'Không thể kết nối đến máy chủ. Vui lòng thử lại sau.'
+    error.value = err.message || 'Không thể kết nối đến máy chủ. Vui lòng thử lại sau.'
   } finally {
     isLoading.value = false
   }

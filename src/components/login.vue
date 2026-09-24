@@ -1,9 +1,9 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { api } from '@/services/apiClient.js'
 
 const router = useRouter()
-const url = import.meta.env.VITE_API_URL || 'http://localhost:5146/api'
 
 const msv = ref('')
 const mk = ref('')
@@ -21,20 +21,12 @@ async function login() {
   isLoading.value = true
 
   try {
-    const response = await fetch(`${url}/auth/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        maSv: msv.value.trim(),
-        matKhau: mk.value
-      })
-    })
+    const data = await api.post('/auth/login', {
+      maSv: msv.value.trim(),
+      matKhau: mk.value
+    }, { auth: false })
 
-    const data = await response.json()
-
-    if (!response.ok) {
+    if (!data?.token || !data?.user) {
       error.value = data.message || 'Đăng nhập thất bại! Vui lòng kiểm tra lại.'
       isLoading.value = false
       return
@@ -51,7 +43,7 @@ async function login() {
     }
   } catch (err) {
     console.error(err)
-    error.value = 'Không thể kết nối đến máy chủ. Vui lòng thử lại sau!'
+    error.value = err.message || 'Không thể kết nối đến máy chủ. Vui lòng thử lại sau!'
   } finally {
     isLoading.value = false
   }

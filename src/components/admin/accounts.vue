@@ -1,8 +1,7 @@
 <script setup>
 import AdminLayout from '@/components/admin/layout/AdminLayout.vue'
 import { ref, computed, reactive, onMounted } from 'vue'
-
-const url = import.meta.env.VITE_API_URL || 'http://localhost:5146/api'
+import { api } from '@/services/apiClient.js'
 
 const search = ref('')
 const roleFilter = ref('Tất cả')
@@ -26,19 +25,9 @@ const accounts = ref([])
 
 async function fetchAccounts() {
   isLoading.value = true
-  const token = sessionStorage.getItem('classhub-token')
 
   try {
-    const res = await fetch(`${url}/admin/accounts`, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
-    })
-
-    if (res.ok) {
-      accounts.value = await res.json()
-    }
+    accounts.value = await api.get('/admin/accounts')
   } catch (err) {
     console.error('Lỗi tải danh sách tài khoản:', err)
   } finally {
@@ -97,12 +86,9 @@ async function saveAccount() {
     return alert('Vui lòng nhập đầy đủ Mã, Họ tên và Email!')
   }
 
-  const token = sessionStorage.getItem('classhub-token')
   const endpoint = isEditing.value
-    ? `${url}/admin/accounts/${accountForm.id}`
-    : `${url}/admin/accounts`
-
-  const method = isEditing.value ? 'PUT' : 'POST'
+    ? `/admin/accounts/${accountForm.id}`
+    : '/admin/accounts'
   const payload = isEditing.value ? {
     name: accountForm.name,
     email: accountForm.email,
@@ -121,25 +107,14 @@ async function saveAccount() {
   }
 
   try {
-    const res = await fetch(endpoint, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify(payload)
-    })
-
-    const data = await res.json()
-    if (res.ok) {
-      alert(data.message || 'Thành công!')
-      closeModal()
-      fetchAccounts()
-    } else {
-      alert(data.message || 'Thao tác thất bại!')
-    }
+    const data = isEditing.value
+      ? await api.put(endpoint, payload)
+      : await api.post(endpoint, payload)
+    alert(data?.message || 'Thành công!')
+    closeModal()
+    fetchAccounts()
   } catch (err) {
-    alert('Lỗi kết nối máy chủ!')
+    alert(err.message || 'Lỗi kết nối máy chủ!')
   }
 }
 
@@ -147,49 +122,23 @@ async function toggleStatus(acc) {
   const actionText = acc.isActive ? 'KHÓA' : 'MỞ KHÓA'
   if (!confirm(`Bạn có chắc muốn ${actionText} tài khoản: ${acc.name} (${acc.id})?`)) return
 
-  const token = sessionStorage.getItem('classhub-token')
   try {
-    const res = await fetch(`${url}/admin/accounts/${acc.id}/toggle-status`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
-    })
-
-    const data = await res.json()
-    if (res.ok) {
-      acc.isActive = data.isActive
-    } else {
-      alert(data.message || 'Lỗi!')
-    }
+    const data = await api.patch(`/admin/accounts/${acc.id}/toggle-status`)
+    acc.isActive = data.isActive
   } catch (err) {
-    alert('Lỗi kết nối máy chủ!')
+    alert(err.message || 'Lỗi kết nối máy chủ!')
   }
 }
 
 async function deleteAccount(acc) {
   if (!confirm(`CẢNH BÁO: Bạn có chắc chắn muốn XÓA VĨNH VIỄN tài khoản ${acc.name} (${acc.id})?`)) return
 
-  const token = sessionStorage.getItem('classhub-token')
   try {
-    const res = await fetch(`${url}/admin/accounts/${acc.id}`, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
-    })
-
-    const data = await res.json()
-    if (res.ok) {
-      alert(data.message || 'Đã xóa!')
-      fetchAccounts()
-    } else {
-      alert(data.message || 'Không thể xóa!')
-    }
+    const data = await api.delete(`/admin/accounts/${acc.id}`)
+    alert(data?.message || 'Đã xóa!')
+    fetchAccounts()
   } catch (err) {
-    alert('Lỗi kết nối máy chủ!')
+    alert(err.message || 'Lỗi kết nối máy chủ!')
   }
 }
 </script>

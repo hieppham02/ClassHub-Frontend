@@ -21,6 +21,14 @@ const emit = defineEmits(['logout'])
       <nav class="hidden items-center gap-1 rounded-xl bg-blue-50 p-1 sm:flex">
         <a href="/" :class="currentPath === '/' ? 'bg-white font-bold text-brand shadow-sm' : 'font-medium text-slate-500 hover:text-brand'" class="rounded-lg px-4 py-2 text-sm transition">Trang chủ</a>
         <a href="/history" :class="currentPath.includes('/history') ? 'bg-white font-bold text-brand shadow-sm' : 'font-medium text-slate-500 hover:text-brand'" class="rounded-lg px-4 py-2 text-sm transition">Lịch sử mượn</a>
+        <a
+          v-if="user.role === 'ADMIN'"
+          href="/admin"
+          :class="currentPath.startsWith('/admin') ? 'bg-white font-bold text-brand shadow-sm' : 'font-medium text-slate-500 hover:text-brand'"
+          class="rounded-lg px-4 py-2 text-sm transition"
+        >
+          Quản trị
+        </a>
       </nav>
       <div class="hidden items-center gap-3 sm:flex">
         <a href="/info" class="text-right hover:opacity-80">

@@ -2,10 +2,8 @@
 import AdminLayout from '@/components/admin/layout/AdminLayout.vue'
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import VueApexCharts from 'vue3-apexcharts'
-import * as signalR from '@microsoft/signalr'
-
-const url = import.meta.env.VITE_API_URL || 'http://localhost:5146/api'
-const hubUrl = url.replace(/\/api\/?$/, '')
+import { api } from '@/services/apiClient.js'
+import { cabinetHub } from '@/services/cabinetHub.js'
 
 const activeTimeFilter = ref('Today')
 const isLoading = ref(false)
@@ -23,34 +21,74 @@ const chartCategories = ref(['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 
 const topBorrowers = ref([])
 const recentActivities = ref([])
 
-let hubConnection = null
+let unsubscribeCabinetStatus = null
 let debounceTimer = null
+
+function formatDayLabel(date) {
+  const dayNames = ['CN', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7']
+  return dayNames[date.getDay()]
+}
+
+function formatDateKey(date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function buildRecentChart(history) {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  const dates = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today)
+    date.setDate(today.getDate() - (6 - index))
+    return date
+  })
+
+  const counts = new Map(dates.map((date) => [formatDateKey(date), 0]))
+  history.forEach((item) => {
+    if (counts.has(item.date)) counts.set(item.date, counts.get(item.date) + 1)
+  })
+
+  return {
+    categories: dates.map(formatDayLabel),
+    series: dates.map((date) => counts.get(formatDateKey(date)) || 0)
+  }
+}
 
 async function fetchDashboardData(showLoading = true) {
   if (showLoading) isLoading.value = true
-  const token = sessionStorage.getItem('classhub-token')
-  const headers = { 
-    'Content-Type': 'application/json', 
-    'Authorization': `Bearer ${token}` 
-  }
 
   try {
-    const [resOverview, resTop, resAct] = await Promise.all([
-      fetch(`${url}/admin/dashboard/overview?timeFilter=${activeTimeFilter.value}`, { headers }),
-      fetch(`${url}/admin/dashboard/top-borrowers`, { headers }),
-      fetch(`${url}/admin/dashboard/recent-activities`, { headers })
+    const [overviewResult, topResult, activitiesResult] = await Promise.allSettled([
+      api.get(`/admin/dashboard/overview?timeFilter=${activeTimeFilter.value}`),
+      api.get('/admin/dashboard/top-borrowers'),
+      api.get('/admin/dashboard/recent-activities')
     ])
 
-    if (resOverview.ok) {
-      const data = await resOverview.json()
+    if (overviewResult.status === 'fulfilled') {
+      const data = overviewResult.value
       stats.value = data.stats
       chartData.value = data.chartSeries
       if (data.chartCategories && data.chartCategories.length > 0) {
         chartCategories.value = data.chartCategories
       }
+
+      const chartTotal = chartData.value.reduce((sum, value) => sum + Number(value || 0), 0)
+      if (data.stats.totalBorrows > 0 && chartTotal === 0) {
+        const history = await api.get('/admin/history')
+        const fallbackChart = buildRecentChart(history)
+        chartData.value = fallbackChart.series
+        chartCategories.value = fallbackChart.categories
+      }
     }
-    if (resTop.ok) topBorrowers.value = await resTop.json()
-    if (resAct.ok) recentActivities.value = await resAct.json()
+    if (topResult.status === 'fulfilled') topBorrowers.value = topResult.value
+    if (activitiesResult.status === 'fulfilled') recentActivities.value = activitiesResult.value
+
+    const failedRequest = [overviewResult, topResult, activitiesResult]
+      .find((result) => result.status === 'rejected')
+    if (failedRequest) throw failedRequest.reason
   } catch (err) {
     console.error('Lỗi khi tải dữ liệu dashboard:', err)
   } finally {
@@ -63,13 +101,8 @@ watch(activeTimeFilter, () => fetchDashboardData(true))
 onMounted(async () => {
   await fetchDashboardData(true)
 
-  hubConnection = new signalR.HubConnectionBuilder()
-    .withUrl(`${hubUrl}/hub/cabinet`)
-    .withAutomaticReconnect()
-    .build()
-
   // Lắng nghe SignalR và cập nhật mượt mà (Debounce 3 giây tránh spam khi có nhiều thiết bị gửi ping)
-  hubConnection.on('CabinetStatusChanged', (data) => {
+  unsubscribeCabinetStatus = cabinetHub.subscribe('CabinetStatusChanged', (data) => {
     console.log('[Dashboard Realtime Sync]:', data)
     
     clearTimeout(debounceTimer)
@@ -79,7 +112,7 @@ onMounted(async () => {
   })
 
   try {
-    await hubConnection.start()
+    await cabinetHub.start()
     console.log('Dashboard da ket noi Realtime SignalR!')
   } catch (err) {
     console.error('Ket noi Realtime SignalR that bai:', err)
@@ -87,7 +120,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  if (hubConnection) hubConnection.stop()
+  if (unsubscribeCabinetStatus) unsubscribeCabinetStatus()
   clearTimeout(debounceTimer)
 })
 
@@ -112,6 +145,11 @@ const chartOptions = computed(() => ({
 }))
 
 const chartSeries = computed(() => [{ name: 'Lượt mượn', data: chartData.value }])
+const hasChartData = computed(() => chartData.value.some((value) => Number(value) > 0))
+const chartRenderKey = computed(() => [
+  ...chartCategories.value,
+  ...chartData.value
+].join('|'))
 
 const donutOptions = computed(() => ({
   chart: { type: 'donut', fontFamily: 'inherit' },
@@ -215,15 +253,27 @@ const donutSeries = computed(() => {
           <div class="lg:col-span-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col justify-between">
             <div>
               <div class="flex items-center justify-between mb-4">
-                <h2 class="text-sm font-bold uppercase tracking-wider text-slate-700">Biểu đồ xu hướng lượt mượn trong tuần</h2>
+                <h2 class="text-sm font-bold uppercase tracking-wider text-slate-700">Xu hướng lượt mượn 7 ngày gần nhất</h2>
                 <span class="text-xs font-medium text-slate-400">Bộ lọc: <strong class="text-slate-700">{{ activeTimeFilter }}</strong></span>
               </div>
-              <div class="mt-2">
-                <vue-apex-charts type="area" height="240" :options="chartOptions" :series="chartSeries" />
+              <div class="relative mt-2 min-h-[240px]">
+                <vue-apex-charts
+                  :key="chartRenderKey"
+                  type="area"
+                  height="240"
+                  :options="chartOptions"
+                  :series="chartSeries"
+                />
+                <div
+                  v-if="!isLoading && !hasChartData"
+                  class="absolute inset-0 flex items-center justify-center bg-white/80 text-sm font-medium text-slate-400"
+                >
+                  Chưa có lượt mượn trong 7 ngày gần nhất
+                </div>
               </div>
             </div>
             <div class="mt-4 flex items-center justify-between text-xs text-slate-400 px-2 border-t border-slate-100 pt-3">
-              <span>Dữ liệu thực tế từ Thứ 2 đến Thứ 7</span>
+              <span>Dữ liệu thực tế trong 7 ngày gần nhất</span>
               <span>Hệ thống ClassHub EAUT</span>
             </div>
           </div>

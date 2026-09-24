@@ -1,8 +1,7 @@
 <script setup>
 import AdminLayout from '@/components/admin/layout/AdminLayout.vue'
 import { ref, computed, onMounted, watch } from 'vue'
-
-const url = import.meta.env.VITE_API_URL || 'http://localhost:5146/api'
+import { api } from '@/services/apiClient.js'
 
 const search = ref('')
 const dateFrom = ref('')
@@ -14,7 +13,6 @@ const historyList = ref([])
 // 1. Tải danh sách lịch sử từ API
 async function fetchHistory() {
   isLoading.value = true
-  const token = sessionStorage.getItem('classhub-token')
 
   const params = new URLSearchParams()
   if (search.value.trim()) params.append('search', search.value.trim())
@@ -23,16 +21,7 @@ async function fetchHistory() {
   if (dateTo.value) params.append('toDate', dateTo.value)
 
   try {
-    const res = await fetch(`${url}/admin/history?${params.toString()}`, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
-    })
-
-    if (res.ok) {
-      historyList.value = await res.json()
-    }
+    historyList.value = await api.get(`/admin/history?${params.toString()}`)
   } catch (err) {
     console.error('Lỗi khi tải lịch sử:', err)
   } finally {

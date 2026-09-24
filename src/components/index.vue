@@ -2,10 +2,8 @@
 import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue'
 import Navbar from '@/components/Navbar.vue'
 import BottomNav from '@/components/BottomNav.vue'
-import * as signalR from '@microsoft/signalr'
-
-const url = import.meta.env.VITE_API_URL || 'http://localhost:5146/api'
-const hubUrl = url.replace(/\/api\/?$/, '')
+import { api } from '@/services/apiClient.js'
+import { cabinetHub } from '@/services/cabinetHub.js'
 
 const currentPath = ref(window.location.pathname)
 const user = ref({ name: '', role: '' })
@@ -31,7 +29,7 @@ const showErrorToast = ref(false)
 const errorMessage = ref('')
 const previewEquipment = ref(null)
 
-let hubConnection = null
+let unsubscribeCabinetStatus = null
 
 function logout() {
   sessionStorage.removeItem('classhub-token')
@@ -57,10 +55,9 @@ function onDelegateInput(e) {
 
 async function fetchRooms() {
   try {
-    const token = sessionStorage.getItem('classhub-token')
-    const response = await fetch(`${url}/rooms/get-rooms`, { headers: { 'Authorization': `Bearer ${token}` } })
-    if (response.ok) {
-      rooms.value = await response.json()
+    const response = await api.get('/rooms/get-rooms')
+    if (Array.isArray(response)) {
+      rooms.value = response
       rooms.value.forEach(r => {
         if (!r.equipment) {
           r.equipment = [
@@ -80,12 +77,9 @@ async function fetchRooms() {
 
 async function fetchActiveSession() {
   try {
-    const token = sessionStorage.getItem('classhub-token')
-    const response = await fetch(`${url}/history/get-history`, { 
-      headers: { 'Authorization': `Bearer ${token}` } 
-    })
-    if (response.ok) {
-      const history = await response.json()
+    const response = await api.get('/history/get-history')
+    if (Array.isArray(response)) {
+      const history = response
       const current = history.find(item => item.status === 'PENDING' || item.status === 'ACTIVE' || item.status === 'IN_USE')
       activeBooking.value = current || null
     }
@@ -105,12 +99,9 @@ async function fetchBookedRooms() {
   const caSo = parseInt(slot.value.match(/\d+/)[0])
 
   try {
-    const token = sessionStorage.getItem('classhub-token')
-    const response = await fetch(`${url}/booking/get-booked-rooms?date=${formattedDate}&slot=${caSo}`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
-    if (response.ok) {
-      booked.value = await response.json()
+    const response = await api.get(`/booking/get-booked-rooms?date=${formattedDate}&slot=${caSo}`)
+    if (Array.isArray(response)) {
+      booked.value = response
     }
   } catch (err) { 
     console.error('Lỗi tải phòng đã đặt:', err) 
@@ -216,132 +207,80 @@ async function book(room) {
   const caSo = parseInt(slot.value.match(/\d+/)[0])
 
   try {
-    const token = sessionStorage.getItem('classhub-token')
-    const response = await fetch(`${url}/booking/dat-phong`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        maPhong: room.id, 
-        ngayMuon: `${day}-${month}-${year}`, 
-        caMuon: caSo, 
-        vaitro: user.value.role === 'Sinh viên' ? 'SINHVIEN' : 'GIANGVIEN' })
+    await api.post('/booking/dat-phong', {
+      maPhong: room.id,
+      ngayMuon: `${day}-${month}-${year}`,
+      caMuon: caSo,
+      vaitro: user.value.role === 'Sinh viên' ? 'SINHVIEN' : 'GIANGVIEN'
     })
 
-    if (response.ok) {
-      showSuccessToast('Đăng ký phòng thành công!')
-      selectedCabinet.value = null
-      await fetchActiveSession()
-      await fetchBookedRooms()
-    } else {
-      const data = await response.json()
-      triggerError(data.message || 'Lỗi đặt phòng!')
-    }
+    showSuccessToast('Đăng ký phòng thành công!')
+    selectedCabinet.value = null
+    await fetchActiveSession()
+    await fetchBookedRooms()
   } catch (err) { 
-    triggerError('Không thể kết nối server') 
+    triggerError(err.message || 'Không thể kết nối server')
   }
 }
 
 async function openDoor() {
   if (!otpValue.value) return triggerError('Vui lòng nhập OTP!')
-  const token = sessionStorage.getItem('classhub-token')
   try {
-    const response = await fetch(`${url}/cabinet/open-door/${activeBooking.value.id}`, {
-      method: 'POST', 
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ otp: otpValue.value })
+    await api.post(`/cabinet/open-door/${activeBooking.value.id}`, {
+      otp: otpValue.value
     })
-    if (response.ok) {
-      showSuccessToast('Đã gửi lệnh mở cửa tủ thành công!')
-      otpValue.value = ''
-      await fetchActiveSession()
-    } else {
-      const data = await response.json()
-      triggerError(data?.message || 'Mã OTP không chính xác!')
-    }
+    showSuccessToast('Đã gửi lệnh mở cửa tủ thành công!')
+    otpValue.value = ''
+    await fetchActiveSession()
   } catch (err) { 
-    triggerError('Lỗi kết nối') 
+    triggerError(err.message || 'Lỗi kết nối')
   }
 }
 
 async function resendOtp() {
-  const token = sessionStorage.getItem('classhub-token')
   try {
-    const response = await fetch(`${url}/history/refresh-otp/${activeBooking.value.id}`, {
-      method: 'POST', 
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
-    if (response.ok) {
-      showSuccessToast('Đã cấp lại mã OTP mới!')
-      otpValue.value = ''
-    } else {
-      triggerError('Có lỗi khi cấp lại OTP')
-    }
+    await api.post(`/history/refresh-otp/${activeBooking.value.id}`)
+    showSuccessToast('Đã cấp lại mã OTP mới!')
+    otpValue.value = ''
   } catch (err) { 
-    triggerError('Lỗi kết nối') 
+    triggerError(err.message || 'Lỗi kết nối')
   }
 }
 
 async function returnRoom() {
-  const token = sessionStorage.getItem('classhub-token')
   try {
-    const response = await fetch(`${url}/booking/return-room/${activeBooking.value.id}?room=${activeBooking.value.room}`, {
-      method: 'PUT', 
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
-    if (response.ok) {
-      showSuccessToast('Hoàn tất trả thiết bị thành công!')
-      confirmReturnId.value = null
-      selectedCabinet.value = null
-      activeBooking.value = null
-      otpValue.value = ''
-      await fetchBookedRooms()
-      await fetchActiveSession()
-    } else {
-      const data = await response.json()
-      triggerError(data.message || 'Có lỗi xảy ra')
-    }
+    await api.put(`/booking/return-room/${activeBooking.value.id}?room=${activeBooking.value.room}`)
+    showSuccessToast('Hoàn tất trả thiết bị thành công!')
+    confirmReturnId.value = null
+    selectedCabinet.value = null
+    activeBooking.value = null
+    otpValue.value = ''
+    await fetchBookedRooms()
+    await fetchActiveSession()
   } catch (err) { 
-    triggerError('Lỗi kết nối') 
+    triggerError(err.message || 'Lỗi kết nối')
   }
 }
 
 async function delegateAccess() {
   if (delegateId.value.length !== 8) return triggerError('Mã Sinh viên phải đúng 8 chữ số!')
-  const token = sessionStorage.getItem('classhub-token')
   try {
-    const response = await fetch(`${url}/history/delegate/${activeBooking.value.id}`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ delegateId: delegateId.value })
+    const data = await api.post(`/history/delegate/${activeBooking.value.id}`, {
+      delegateId: delegateId.value
     })
-    if (response.ok) {
-      const data = await response.json()
-      showSuccessToast(data.message)
-      delegateId.value = ''
-    } else {
-      const data = await response.json()
-      triggerError(data.message)
-    }
+    showSuccessToast(data?.message || 'Đã giao quyền thành công!')
+    delegateId.value = ''
   } catch (err) { 
-    triggerError('Lỗi kết nối tới server!') 
+    triggerError(err.message || 'Lỗi kết nối tới server!')
   }
 }
 
 async function revokeAccess() {
-  const token = sessionStorage.getItem('classhub-token')
   try {
-    const response = await fetch(`${url}/history/revoke/${activeBooking.value.id}`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
-    if (response.ok) { 
-      showSuccessToast('Đã thu hồi quyền thành công!') 
-    } else { 
-      const data = await response.json()
-      triggerError(data.message) 
-    }
+    await api.post(`/history/revoke/${activeBooking.value.id}`)
+    showSuccessToast('Đã thu hồi quyền thành công!')
   } catch (err) { 
-    triggerError('Lỗi kết nối tới server!') 
+    triggerError(err.message || 'Lỗi kết nối tới server!')
   }
 }
 
@@ -362,13 +301,8 @@ onMounted(async () => {
   await fetchActiveSession()
   await fetchBookedRooms()
 
-  hubConnection = new signalR.HubConnectionBuilder()
-    .withUrl(`${hubUrl}/hub/cabinet`)
-    .withAutomaticReconnect()
-    .build()
-
   // Cập nhật vi phân tại chỗ trên RAM (Delta Update)
-  hubConnection.on('CabinetStatusChanged', (data) => {
+  unsubscribeCabinetStatus = cabinetHub.subscribe('CabinetStatusChanged', (data) => {
     const targetRoom = rooms.value.find(r => String(r.id).toLowerCase() === String(data.roomId).toLowerCase())
     if (targetRoom) {
       targetRoom.isOnline = data.isOnline
@@ -385,7 +319,7 @@ onMounted(async () => {
   })
 
   try {
-    await hubConnection.start()
+    await cabinetHub.start()
     console.log('Da ket noi Realtime Hub tren Trang chu!')
   } catch (err) {
     console.error('Loi ket noi Realtime:', err)
@@ -393,7 +327,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  if (hubConnection) hubConnection.stop()
+  if (unsubscribeCabinetStatus) unsubscribeCabinetStatus()
 })
 </script>
 
@@ -652,6 +586,6 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <BottomNav :currentPath="currentPath" />
+    <BottomNav :currentPath="currentPath" :is-admin="user.role === 'ADMIN'" />
   </main>
 </template>

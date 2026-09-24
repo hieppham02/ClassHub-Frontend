@@ -34,6 +34,13 @@ const menuItems = [
     label: 'Lịch sử mượn trả',
     href: '/admin/history',
     icon: `<path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />`
+  },
+  {
+    label: 'Trang người dùng',
+    mobileLabel: 'Trang chủ',
+    href: '/',
+    exact: true,
+    icon: `<path stroke-linecap="round" stroke-linejoin="round" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h5m4-4l4-4m0 0l-4-4m4 4H8" />`
   }
 ]
 
@@ -101,7 +108,7 @@ function isActive(item) {
       class="flex flex-col items-center gap-0.5 flex-1 transition"
     >
       <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" v-html="item.icon"></svg>
-      <span class="text-[9px] font-semibold leading-none truncate max-w-[52px] text-center">{{ item.label }}</span>
+      <span class="text-[9px] font-semibold leading-none truncate max-w-[52px] text-center">{{ item.mobileLabel || item.label }}</span>
     </router-link>
   </nav>
 </template>
