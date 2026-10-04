@@ -1,52 +1,52 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
-import Index from './components/index.vue'
-import Login from './components/login.vue'
-import Register from './components/register.vue'
-import History from './components/history.vue'
-import Info from './components/info.vue'
-import NotFound from './components/NotFound.vue'
+import HomeView from './views/client/HomeView.vue'
+import LoginView from './views/auth/LoginView.vue'
+import RegisterView from './views/auth/RegisterView.vue'
+import HistoryView from './views/client/HistoryView.vue'
+import InfoView from './views/client/InfoView.vue'
+import NotFoundView from './views/NotFoundView.vue'
 import { hasRole, isAuthenticated } from './services/authSession.js'
 
 const routes = [
-  { path: '/', component: Index, meta: { requiresAuth: true } },
-  { path: '/history', component: History, meta: { requiresAuth: true } },
-  { path: '/info', component: Info, meta: { requiresAuth: true } },
-  { path: '/login', component: Login, meta: { guestOnly: true } },
-  { path: '/register', component: Register, meta: { guestOnly: true } },
+  { path: '/', component: HomeView, meta: { requiresAuth: true } },
+  { path: '/history', component: HistoryView, meta: { requiresAuth: true } },
+  { path: '/info', component: InfoView, meta: { requiresAuth: true } },
+  { path: '/login', component: LoginView, meta: { guestOnly: true } },
+  { path: '/register', component: RegisterView, meta: { guestOnly: true } },
 
   // --- ADMIN ROUTES (lazy-loaded) ---
   {
     path: '/admin',
-    component: () => import('./components/admin/dashboard.vue'),
+    component: () => import('./views/admin/DashboardView.vue'),
     meta: { requiresAuth: true, roles: ['ADMIN'] }
   },
   {
     path: '/admin/cabinets',
-    component: () => import('./components/admin/cabinets.vue'),
+    component: () => import('./views/admin/CabinetsView.vue'),
     meta: { requiresAuth: true, roles: ['ADMIN'] }
   },
   {
     path: '/admin/accounts',
-    component: () => import('./components/admin/accounts.vue'),
+    component: () => import('./views/admin/AccountsView.vue'),
     meta: { requiresAuth: true, roles: ['ADMIN'] }
   },
   {
     path: '/admin/buildings',
-    component: () => import('./components/admin/buildings.vue'),
+    component: () => import('./views/admin/BuildingsView.vue'),
     meta: { requiresAuth: true, roles: ['ADMIN'] }
   },
   {
     path: '/admin/history',
-    component: () => import('./components/admin/history-admin.vue'),
+    component: () => import('./views/admin/HistoryView.vue'),
     meta: { requiresAuth: true, roles: ['ADMIN'] }
   },
   {
     path: '/admin/statistics',
-    component: () => import('./components/admin/statistics.vue'),
+    component: () => import('./views/admin/StatisticsView.vue'),
     meta: { requiresAuth: true, roles: ['ADMIN'] }
   },
-  { path: '/:pathMatch(.*)*', component: NotFound }
+  { path: '/:pathMatch(.*)*', component: NotFoundView }
 ]
 
 const router = createRouter({

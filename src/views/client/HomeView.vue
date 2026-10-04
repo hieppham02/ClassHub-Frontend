@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue'
-import Navbar from '@/components/Navbar.vue'
-import BottomNav from '@/components/BottomNav.vue'
+import Navbar from '@/components/shared/Navbar.vue'
+import BottomNav from '@/components/shared/BottomNav.vue'
 import { api } from '@/services/apiClient.js'
 import { cabinetHub } from '@/services/cabinetHub.js'
 
