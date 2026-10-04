@@ -8,30 +8,66 @@ const dateFrom = ref('')
 const dateTo = ref('')
 const statusFilter = ref('Tất cả')
 const isLoading = ref(false)
+const errorMessage = ref('')
 const historyList = ref([])
+const pageSize = 20
+const pagination = ref({ page: 1, pageSize, totalItems: 0, totalPages: 0 })
+let requestSequence = 0
+
+const visiblePages = computed(() => {
+  const total = pagination.value.totalPages
+  const current = pagination.value.page
+  if (total <= 7) return Array.from({ length: total }, (_, index) => index + 1)
+
+  const pages = new Set([1, total, current - 1, current, current + 1])
+  if (current <= 3) [2, 3, 4].forEach(page => pages.add(page))
+  if (current >= total - 2) [total - 3, total - 2, total - 1].forEach(page => pages.add(page))
+
+  const sorted = [...pages].filter(page => page > 0 && page <= total).sort((a, b) => a - b)
+  return sorted.flatMap((page, index) => index > 0 && page - sorted[index - 1] > 1
+    ? [`ellipsis-${page}`, page]
+    : [page])
+})
+
+const rangeStart = computed(() => pagination.value.totalItems
+  ? (pagination.value.page - 1) * pagination.value.pageSize + 1
+  : 0)
+const rangeEnd = computed(() => Math.min(
+  pagination.value.page * pagination.value.pageSize,
+  pagination.value.totalItems
+))
 
 // 1. Tải danh sách lịch sử từ API
-async function fetchHistory() {
+async function fetchHistory(page = pagination.value.page) {
+  const sequence = ++requestSequence
   isLoading.value = true
+  errorMessage.value = ''
 
   const params = new URLSearchParams()
   if (search.value.trim()) params.append('search', search.value.trim())
   if (statusFilter.value !== 'Tất cả') params.append('status', statusFilter.value)
   if (dateFrom.value) params.append('fromDate', dateFrom.value)
   if (dateTo.value) params.append('toDate', dateTo.value)
+  params.set('page', String(page))
+  params.set('pageSize', String(pageSize))
 
   try {
-    historyList.value = await api.get(`/admin/history?${params.toString()}`)
+    const response = await api.get(`/admin/history?${params.toString()}`)
+    if (sequence !== requestSequence) return
+    historyList.value = response.items || []
+    pagination.value = response.pagination || { page, pageSize, totalItems: 0, totalPages: 0 }
   } catch (err) {
+    if (sequence !== requestSequence) return
     console.error('Lỗi khi tải lịch sử:', err)
+    errorMessage.value = err?.message || 'Không thể tải dữ liệu lịch sử.'
   } finally {
-    isLoading.value = false
+    if (sequence === requestSequence) isLoading.value = false
   }
 }
 
 // Theo dõi thay đổi của bộ lọc
 watch([statusFilter, dateFrom, dateTo], () => {
-  fetchHistory()
+  fetchHistory(1)
 })
 
 onMounted(() => {
@@ -40,7 +76,12 @@ onMounted(() => {
 
 // Xử lý tìm kiếm khi người dùng nhấn Enter hoặc bấm icon
 function handleSearch() {
-  fetchHistory()
+  fetchHistory(1)
+}
+
+function goToPage(page) {
+  if (isLoading.value || page < 1 || page > pagination.value.totalPages || page === pagination.value.page) return
+  fetchHistory(page)
 }
 
 // 2. Xuất file CSV chuẩn UTF-8
@@ -99,9 +140,10 @@ function exportCSV() {
           </button>
           <button 
             @click="exportCSV" 
-            class="h-10 rounded-xl border border-brand px-5 text-sm font-bold text-brand hover:bg-blue-50 transition shrink-0 bg-white shadow-sm"
+            class="flex h-10 shrink-0 items-center gap-2 rounded-xl border border-brand bg-white px-5 text-sm font-bold text-brand shadow-sm transition hover:bg-blue-50 active:scale-[0.98]"
           >
-            ↓ Xuất CSV
+            <font-awesome-icon icon="fa-solid fa-download" class="size-4" />
+            Xuất trang hiện tại
           </button>
         </div>
       </div>
@@ -121,7 +163,7 @@ function exportCSV() {
             />
             <button 
               v-if="search" 
-              @click="search = ''; fetchHistory()" 
+              @click="search = ''; fetchHistory(1)"
               class="absolute right-3 top-1/2 -translate-y-1/2 flex size-6 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
             >
               <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -153,6 +195,11 @@ function exportCSV() {
           </div>
         </div>
 
+        <div v-if="errorMessage" class="mb-5 flex items-center justify-between gap-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+          <span>{{ errorMessage }}</span>
+          <button class="shrink-0 font-bold underline underline-offset-2" @click="fetchHistory(pagination.page)">Thử lại</button>
+        </div>
+
         <!-- Table -->
         <div class="rounded-2xl border border-blue-100 bg-white shadow-sm overflow-hidden">
           <div class="overflow-x-auto">
@@ -172,7 +219,14 @@ function exportCSV() {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="record in historyList" :key="record.id" class="border-b border-blue-50 transition hover:bg-blue-50/30">
+                <template v-if="isLoading">
+                  <tr v-for="row in 8" :key="`skeleton-${row}`" class="border-b border-blue-50" aria-hidden="true">
+                    <td v-for="column in 10" :key="column" class="px-5 py-4">
+                      <div class="h-4 animate-pulse rounded-md bg-slate-100" :class="column === 4 || column === 7 ? 'w-28' : 'w-16'"></div>
+                    </td>
+                  </tr>
+                </template>
+                <tr v-else v-for="record in historyList" :key="record.id" class="border-b border-blue-50 transition hover:bg-blue-50/30">
                   <td class="px-5 py-3.5 font-bold text-slate-900 whitespace-nowrap">{{ record.room }}</td>
                   <td class="px-5 py-3.5 text-slate-600 whitespace-nowrap">{{ record.slot }}</td>
                   <td class="px-5 py-3.5 text-slate-600 whitespace-nowrap">{{ record.displayDate }}</td>
@@ -213,13 +267,54 @@ function exportCSV() {
                   </td>
                 </tr>
 
-                <tr v-if="historyList.length === 0">
+                <tr v-if="!isLoading && historyList.length === 0">
                   <td colspan="10" class="py-16 text-center text-slate-400">
-                    {{ isLoading ? 'Đang tải dữ liệu lịch sử...' : 'Không tìm thấy lượt mượn nào phù hợp.' }}
+                    Không tìm thấy lượt mượn nào phù hợp.
                   </td>
                 </tr>
               </tbody>
             </table>
+          </div>
+
+          <div v-if="pagination.totalItems > 0" class="flex flex-col gap-4 border-t border-blue-100 bg-slate-50/60 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+            <p class="text-xs font-medium text-slate-500">
+              Hiển thị <span class="font-bold text-slate-700">{{ rangeStart }}–{{ rangeEnd }}</span>
+              trong <span class="font-bold text-slate-700">{{ pagination.totalItems }}</span> lượt mượn
+            </p>
+
+            <nav class="flex items-center gap-1" aria-label="Phân trang lịch sử mượn trả">
+              <button
+                :disabled="isLoading || pagination.page <= 1"
+                class="flex size-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:border-brand hover:text-brand active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label="Trang trước"
+                @click="goToPage(pagination.page - 1)"
+              >
+                <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>
+              </button>
+
+              <template v-for="page in visiblePages" :key="page">
+                <span v-if="typeof page === 'string'" class="flex size-9 items-center justify-center text-xs text-slate-400">...</span>
+                <button
+                  v-else
+                  :disabled="isLoading"
+                  :aria-current="page === pagination.page ? 'page' : undefined"
+                  :class="page === pagination.page ? 'border-brand bg-brand text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-brand hover:text-brand'"
+                  class="size-9 rounded-lg border text-xs font-bold transition active:scale-[0.98] disabled:cursor-wait"
+                  @click="goToPage(page)"
+                >
+                  {{ page }}
+                </button>
+              </template>
+
+              <button
+                :disabled="isLoading || pagination.page >= pagination.totalPages"
+                class="flex size-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:border-brand hover:text-brand active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label="Trang sau"
+                @click="goToPage(pagination.page + 1)"
+              >
+                <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+              </button>
+            </nav>
           </div>
         </div>
 

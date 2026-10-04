@@ -1,8 +1,11 @@
 <script setup>
 import AdminLayout from '@/components/admin/layout/AdminLayout.vue'
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
+import { api } from '@/services/apiClient.js'
 
 const showFilterModal = ref(false)
+const isLoading = ref(true)
+const errorMessage = ref('')
 
 const activeFilters = reactive({
   groupBy: 'room',
@@ -16,50 +19,105 @@ const tempFilters = reactive({
   dateTo: ''
 })
 
-const rawData = ref([
-  { id: 1, room: 'EAUT-101', slot: 'Ca 1', floor: 'Tầng 1', building: 'Tòa EAUT', user: 'Phạm Hoàng Hiệp', onTime: true },
-  { id: 2, room: 'DTD-201', slot: 'Ca 2', floor: 'Tầng 2', building: 'Đinh Trọng Dật', user: 'Nguyễn Văn Đạt', onTime: true },
-  { id: 3, room: 'DTD-202', slot: 'Ca 3', floor: 'Tầng 2', building: 'Đinh Trọng Dật', user: 'Kiều Thanh Ngân', onTime: false },
-  { id: 4, room: 'EAUT-101', slot: 'Ca 1', floor: 'Tầng 1', building: 'Tòa EAUT', user: 'Trần Văn A', onTime: true },
-  { id: 5, room: 'VNB-208', slot: 'Ca 4', floor: 'Tầng 2', building: 'Việt Nam Building', user: 'Phạm Hoàng Hiệp', onTime: true },
-  { id: 6, room: 'EAUT-102', slot: 'Ca 2', floor: 'Tầng 1', building: 'Tòa EAUT', user: 'Nguyễn Văn Đạt', onTime: false }
-])
+const rawData = ref([])
+
+const completedStatuses = new Set(['COMPLETED'])
+const lateStatuses = new Set(['OVERDUE', 'EXPIRED', 'FAULT'])
+
+const normalizedData = computed(() => rawData.value.map(item => ({
+  ...item,
+  user: item.borrower || item.borrowerId || 'Không xác định',
+  statusLabel: getStatusLabel(item.status),
+  onTime: completedStatuses.has(item.status),
+  late: lateStatuses.has(item.status)
+})))
+
+const completedCount = computed(() => normalizedData.value.filter(item => item.onTime).length)
+const lateCount = computed(() => normalizedData.value.filter(item => item.late).length)
+const resolvedCount = computed(() => completedCount.value + lateCount.value)
+const completionRate = computed(() => resolvedCount.value
+  ? Math.round((completedCount.value / resolvedCount.value) * 100)
+  : 0)
 
 const aggregatedData = computed(() => {
   const grouped = {}
-  rawData.value.forEach(item => {
+  normalizedData.value.forEach(item => {
     const key = item[activeFilters.groupBy]
     if (!grouped[key]) grouped[key] = { name: key, total: 0, onTime: 0, late: 0 }
     grouped[key].total++
     if (item.onTime) grouped[key].onTime++
-    else grouped[key].late++
+    if (item.late) grouped[key].late++
   })
   return Object.values(grouped).sort((a, b) => b.total - a.total)
 })
 
 const groupLabel = computed(() => {
-  const labels = { room: 'Tên phòng', floor: 'Tầng', building: 'Tòa nhà', user: 'Người dùng' }
+  const labels = { room: 'Tên phòng', slot: 'Ca học', user: 'Người dùng', statusLabel: 'Trạng thái' }
   return labels[activeFilters.groupBy]
 })
 
-// Tọa độ biểu đồ đường sóng mượt (Smooth Area Line Chart) chuẩn phong cách UI thẻ phẳng của ảnh mẫu
-const lineChartPoints = computed(() => {
-  return "M 0,180 Q 150,180 250,150 T 450,80 T 600,140 T 750,180 L 800,180"
+const dailyData = computed(() => {
+  const counts = new Map()
+  normalizedData.value.forEach(item => counts.set(item.date, (counts.get(item.date) || 0) + 1))
+  return [...counts.entries()].sort(([a], [b]) => a.localeCompare(b))
 })
 
-const lineChartArea = computed(() => {
-  return "M 0,180 Q 150,180 250,150 T 450,80 T 600,140 T 750,180 L 800,200 L 0,200 Z"
-})
+const maxDailyCount = computed(() => Math.max(1, ...dailyData.value.map(([, count]) => count)))
+const chartPoints = computed(() => dailyData.value.map(([, count], index, items) => ({
+  x: items.length === 1 ? 400 : (index / (items.length - 1)) * 800,
+  y: 180 - (count / maxDailyCount.value) * 150,
+  count
+})))
+const lineChartPoints = computed(() => chartPoints.value.length
+  ? `M ${chartPoints.value.map(point => `${point.x},${point.y}`).join(' L ')}`
+  : '')
+const lineChartArea = computed(() => lineChartPoints.value
+  ? `${lineChartPoints.value} L ${chartPoints.value.at(-1).x},200 L ${chartPoints.value[0].x},200 Z`
+  : '')
+
+const chartLabels = computed(() => dailyData.value.map(([date]) => new Intl.DateTimeFormat('vi-VN', {
+  day: '2-digit', month: '2-digit'
+}).format(new Date(`${date}T00:00:00`))))
+
+function getStatusLabel(status) {
+  return {
+    PENDING: 'Chờ nhận', IN_USE: 'Đang mượn', RETURNING: 'Đang trả',
+    COMPLETED: 'Đã trả', CANCELED: 'Đã hủy', EXPIRED: 'Hết hạn',
+    OVERDUE: 'Quá hạn', FAULT: 'Có sự cố'
+  }[status] || status || 'Không xác định'
+}
+
+async function fetchStatistics() {
+  isLoading.value = true
+  errorMessage.value = ''
+  try {
+    const params = new URLSearchParams()
+    if (activeFilters.dateFrom) params.set('fromDate', activeFilters.dateFrom)
+    if (activeFilters.dateTo) params.set('toDate', activeFilters.dateTo)
+    rawData.value = await api.get(`/admin/history/statistics?${params.toString()}`)
+  } catch (error) {
+    errorMessage.value = error?.message || 'Không thể tải dữ liệu thống kê.'
+  } finally {
+    isLoading.value = false
+  }
+}
 
 function openFilterModal() {
   Object.assign(tempFilters, activeFilters)
   showFilterModal.value = true
 }
 
-function applyFilter() {
+async function applyFilter() {
+  if (tempFilters.dateFrom && tempFilters.dateTo && tempFilters.dateFrom > tempFilters.dateTo) {
+    errorMessage.value = 'Ngày bắt đầu không được lớn hơn ngày kết thúc.'
+    return
+  }
   Object.assign(activeFilters, tempFilters)
   showFilterModal.value = false
+  await fetchStatistics()
 }
+
+onMounted(fetchStatistics)
 </script>
 
 <template>
@@ -81,9 +139,9 @@ function applyFilter() {
             <label class="grid gap-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">Gom nhóm theo
               <select v-model="tempFilters.groupBy" class="h-11 rounded-xl border border-blue-100 bg-white px-4 text-sm text-ink outline-none focus:border-brand focus:ring-1 focus:ring-brand">
                 <option value="room">Theo phòng học</option>
-                <option value="floor">Theo tầng</option>
-                <option value="building">Theo tòa nhà</option>
+                <option value="slot">Theo ca học</option>
                 <option value="user">Theo người dùng</option>
+                <option value="statusLabel">Theo trạng thái</option>
               </select>
             </label>
             
@@ -95,11 +153,14 @@ function applyFilter() {
                 <input v-model="tempFilters.dateTo" type="date" class="h-11 rounded-xl border border-blue-100 bg-white px-3 text-sm text-ink outline-none focus:border-brand focus:ring-1 focus:ring-brand" />
               </label>
             </div>
+            <p v-if="tempFilters.dateFrom && tempFilters.dateTo && tempFilters.dateFrom > tempFilters.dateTo" class="text-xs font-medium text-red-600">
+              Ngày bắt đầu không được lớn hơn ngày kết thúc.
+            </p>
           </div>
 
           <div class="bg-slate-50 p-4 border-t border-blue-50 flex gap-3">
             <button @click="showFilterModal = false" class="h-10 flex-1 rounded-xl border border-blue-200 text-xs font-bold text-slate-600 hover:bg-white transition">Hủy</button>
-            <button @click="applyFilter" class="h-10 flex-1 rounded-xl bg-brand text-xs font-bold text-white shadow-md hover:bg-brand-dark transition">Áp dụng</button>
+            <button @click="applyFilter" :disabled="tempFilters.dateFrom && tempFilters.dateTo && tempFilters.dateFrom > tempFilters.dateTo" class="h-10 flex-1 rounded-xl bg-brand text-xs font-bold text-white shadow-md hover:bg-brand-dark transition disabled:cursor-not-allowed disabled:opacity-50">Áp dụng</button>
           </div>
         </div>
       </div>
@@ -127,32 +188,41 @@ function applyFilter() {
         </div>
       </div>
 
+      <div v-if="errorMessage" class="mb-6 flex items-center justify-between gap-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+        <span>{{ errorMessage }}</span>
+        <button class="shrink-0 font-bold underline underline-offset-2" @click="fetchStatistics">Thử lại</button>
+      </div>
+
+      <div v-if="isLoading" class="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4" aria-label="Đang tải thống kê">
+        <div v-for="index in 4" :key="index" class="h-28 animate-pulse rounded-2xl border border-blue-100 bg-slate-100"></div>
+      </div>
+
       <!-- Dashboard Cards (Style các thẻ thông số ngang liền mạch y hệt UI ảnh mẫu) -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div class="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm flex flex-col justify-between">
           <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Tổng lượt mượn</p>
-          <p class="text-2xl sm:text-3xl font-black text-ink mt-3 tracking-tight">{{ rawData.length }}</p>
+          <p class="text-2xl sm:text-3xl font-black text-ink mt-3 tracking-tight">{{ normalizedData.length }}</p>
         </div>
         
         <div class="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm flex flex-col justify-between">
           <div>
-            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Đúng hạn</p>
-            <p class="text-2xl sm:text-3xl font-black text-emerald-600 mt-3 tracking-tight">{{ rawData.filter(x => x.onTime).length }}</p>
+            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Đã hoàn tất</p>
+            <p class="text-2xl sm:text-3xl font-black text-emerald-600 mt-3 tracking-tight">{{ completedCount }}</p>
           </div>
         </div>
 
         <div class="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm flex flex-col justify-between">
           <div>
-            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Trễ hạn</p>
-            <p class="text-2xl sm:text-3xl font-black text-red-600 mt-3 tracking-tight">{{ rawData.filter(x => !x.onTime).length }}</p>
+            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Cần xử lý</p>
+            <p class="text-2xl sm:text-3xl font-black text-red-600 mt-3 tracking-tight">{{ lateCount }}</p>
           </div>
         </div>
 
         <div class="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm flex flex-col justify-between">
           <div>
-            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Tỷ lệ đúng hạn</p>
+            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Tỷ lệ hoàn tất</p>
             <p class="text-2xl sm:text-3xl font-black text-brand mt-3 tracking-tight">
-              {{ Math.round((rawData.filter(x => x.onTime).length / rawData.length) * 100) }}%
+              {{ completionRate }}%
             </p>
           </div>
         </div>
@@ -167,16 +237,16 @@ function applyFilter() {
               <button class="rounded-lg px-4 py-1.5 text-xs font-bold text-slate-600 hover:text-brand transition">Chi tiết</button>
             </div>
             <div class="flex gap-2">
-              <span class="inline-flex items-center rounded-md bg-blue-50 px-2.5 py-1 text-xs font-bold text-brand border border-blue-100">Real-time Analytics</span>
+              <span class="inline-flex items-center rounded-md bg-blue-50 px-2.5 py-1 text-xs font-bold text-brand border border-blue-100">{{ dailyData.length }} ngày có dữ liệu</span>
             </div>
           </div>
           
           <div class="relative w-full h-64">
             <div class="absolute inset-0 flex flex-col justify-between pointer-events-none">
-              <div class="border-b border-blue-50 w-full text-[10px] text-slate-400 pl-1">6.0M</div>
-              <div class="border-b border-blue-50 w-full text-[10px] text-slate-400 pl-1">4.5M</div>
-              <div class="border-b border-blue-50 w-full text-[10px] text-slate-400 pl-1">3.0M</div>
-              <div class="border-b border-blue-50 w-full text-[10px] text-slate-400 pl-1">1.5M</div>
+              <div class="border-b border-blue-50 w-full text-[10px] text-slate-400 pl-1">{{ maxDailyCount }}</div>
+              <div class="border-b border-blue-50 w-full text-[10px] text-slate-400 pl-1">{{ Math.round(maxDailyCount * 0.75) }}</div>
+              <div class="border-b border-blue-50 w-full text-[10px] text-slate-400 pl-1">{{ Math.round(maxDailyCount * 0.5) }}</div>
+              <div class="border-b border-blue-50 w-full text-[10px] text-slate-400 pl-1">{{ Math.round(maxDailyCount * 0.25) }}</div>
               <div class="border-b border-blue-50 w-full text-[10px] text-slate-400 pl-1">0</div>
             </div>
 
@@ -189,11 +259,13 @@ function applyFilter() {
               </defs>
               <path :d="lineChartArea" fill="url(#systemBrandGradient)" />
               <path :d="lineChartPoints" fill="none" stroke="var(--color-brand, #2563eb)" stroke-width="2.5" stroke-linecap="round" />
+              <circle v-for="point in chartPoints" :key="`${point.x}-${point.y}`" :cx="point.x" :cy="point.y" r="4" fill="white" stroke="var(--color-brand, #2563eb)" stroke-width="2" />
             </svg>
+            <div v-if="!isLoading && dailyData.length === 0" class="absolute inset-0 z-20 flex items-center justify-center text-sm font-medium text-slate-400">Không có dữ liệu để vẽ biểu đồ.</div>
           </div>
 
           <div class="flex justify-between text-[10px] text-slate-400 mt-3 font-mono">
-            <span>00:00</span><span>03:00</span><span>06:00</span><span>09:00</span><span>12:00</span><span>15:00</span><span>18:00</span><span>21:00</span><span>23:00</span>
+            <span v-for="label in chartLabels" :key="label">{{ label }}</span>
           </div>
         </div>
       </div>
@@ -210,8 +282,8 @@ function applyFilter() {
               <tr class="border-b border-blue-50 bg-blue-50/60">
                 <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">{{ groupLabel }}</th>
                 <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Tổng mượn</th>
-                <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Đúng hạn</th>
-                <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Trễ hạn</th>
+                <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Đã hoàn tất</th>
+                <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Cần xử lý</th>
                 <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Tỷ lệ hoàn thành</th>
               </tr>
             </thead>
@@ -225,7 +297,7 @@ function applyFilter() {
                   {{ Math.round((item.onTime / item.total) * 100) }}%
                 </td>
               </tr>
-              <tr v-if="aggregatedData.length === 0">
+              <tr v-if="!isLoading && aggregatedData.length === 0">
                 <td colspan="5" class="py-16 text-center text-slate-400 font-medium text-xs">Không có dữ liệu trong khoảng thời gian này.</td>
               </tr>
             </tbody>
