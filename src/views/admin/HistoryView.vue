@@ -124,7 +124,7 @@ function exportCSV() {
   <AdminLayout>
     <div class="w-full">
       <!-- Header NEO CỐ ĐỊNH -->
-      <div class="sticky top-0 z-40 bg-mist/95 backdrop-blur-sm border-b border-slate-200/60 shadow-sm px-4 sm:px-6 lg:px-32 pt-6 pb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div class="sticky top-0 z-40 bg-mist/95 backdrop-blur-sm border-b border-slate-200/60 shadow-sm px-4 sm:px-6 lg:px-8 xl:px-12 pt-6 pb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p class="text-xs font-bold uppercase tracking-widest text-slate-400">Kiểm toán &amp; Thống kê</p>
           <h1 class="mt-0.5 text-2xl font-black text-ink">Lịch sử mượn trả thiết bị</h1>
@@ -133,9 +133,9 @@ function exportCSV() {
           <button 
             @click="fetchHistory" 
             :disabled="isLoading"
-            class="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 h-10 text-xs font-bold text-slate-600 hover:bg-slate-50 transition shadow-sm"
+            class="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 h-10 text-xs font-bold text-slate-600 hover:bg-slate-50 transition shadow-sm disabled:opacity-60 active:scale-[0.98]"
           >
-            <span :class="{ 'animate-spin': isLoading }"><font-awesome-icon icon="fa-solid fa-arrows-rotate" class="size-4 text-slate-500" /> </span>
+            <font-awesome-icon icon="fa-solid fa-arrows-rotate" :class="{ 'animate-spin': isLoading }" class="size-4 text-slate-500 mr-1" />
             <span>Làm mới</span>
           </button>
           <button 
@@ -149,7 +149,7 @@ function exportCSV() {
       </div>
 
       <!-- Nội dung Body -->
-      <div class="px-4 sm:px-6 lg:px-32 pt-5 pb-10">
+      <div class="px-4 sm:px-6 lg:px-8 xl:px-12 pt-5 pb-10">
         
         <!-- Filter bar -->
         <div class="mb-5 flex flex-col xl:flex-row items-end gap-3">

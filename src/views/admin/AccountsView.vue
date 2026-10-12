@@ -148,26 +148,26 @@ async function deleteAccount(acc) {
     <div class="w-full">
       <!-- Header NEO CỐ ĐỊNH -->
       <div
-        class="sticky top-0 z-40 bg-mist/95 backdrop-blur-sm border-b border-slate-200/60 shadow-sm px-4 sm:px-6 lg:px-32 pt-6 pb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        class="sticky top-0 z-40 bg-mist/95 backdrop-blur-sm border-b border-slate-200/60 shadow-sm px-4 sm:px-6 lg:px-8 xl:px-12 pt-6 pb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p class="text-xs font-bold uppercase tracking-widest text-slate-400">Quản lý người dùng</p>
           <h1 class="mt-0.5 text-2xl font-black text-ink">Tài khoản hệ thống</h1>
         </div>
         <div class="flex items-center gap-3">
           <button @click="fetchAccounts" :disabled="isLoading"
-            class="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 h-10 text-xs font-bold text-slate-600 hover:bg-slate-50 transition shadow-sm">
-            <span :class="{ 'animate-spin': isLoading }"></span>
-            <span><font-awesome-icon icon="fa-solid fa-arrows-rotate" class="size-4 text-slate-500" /> Làm mới</span>
+            class="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 h-10 text-xs font-bold text-slate-600 hover:bg-slate-50 transition shadow-sm disabled:opacity-60 active:scale-[0.98]">
+            <font-awesome-icon icon="fa-solid fa-arrows-rotate" :class="{ 'animate-spin': isLoading }" class="size-4 text-slate-500 mr-1" />
+            <span>Làm mới</span>
           </button>
           <button @click="openAddModal"
-            class="h-10 rounded-xl bg-brand px-5 text-sm font-bold text-white shadow-md shadow-brand/20 hover:bg-brand-dark transition shrink-0">
+            class="h-10 rounded-xl bg-brand px-5 text-sm font-bold text-white shadow-md shadow-brand/20 hover:bg-brand-dark transition shrink-0 active:scale-[0.98]">
             + Thêm tài khoản
           </button>
         </div>
       </div>
 
       <!-- Nội dung Body -->
-      <div class="px-4 sm:px-6 lg:px-32 pt-5 pb-10">
+      <div class="px-4 sm:px-6 lg:px-8 xl:px-12 pt-5 pb-10">
 
         <!-- Filter bar -->
         <div class="mb-5 flex flex-col sm:flex-row gap-3">

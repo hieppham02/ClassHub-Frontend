@@ -62,29 +62,29 @@ async function register() {
 
 <template>
   <main
-    class="relative flex min-h-screen items-center justify-center bg-cover bg-center bg-no-repeat px-4 py-8 sm:px-6 lg:px-8"
+    class="relative flex min-h-[100dvh] items-center justify-center bg-cover bg-center bg-no-repeat px-4 py-8 sm:px-6 lg:px-8"
     style="background-image: url('/bg-login-2.png');">
     <div class="absolute inset-0 bg-slate-900/30 backdrop-blur-[2px]" />
 
-    <!-- Main Glassmorphism Card (Trắng ngả xanh) -->
+    <!-- Main Glassmorphism Card (Trắng ngả xanh brand) -->
     <div
-      class="relative z-10 grid w-full max-w-5xl overflow-hidden rounded-3xl border border-white/60 bg-cyan-50/85 shadow-2xl shadow-cyan-900/20 backdrop-blur-2xl lg:grid-cols-12 my-8">
+      class="relative z-10 grid w-full max-w-5xl overflow-hidden rounded-3xl border border-white/60 bg-white/90 shadow-2xl shadow-blue-950/15 backdrop-blur-2xl lg:grid-cols-12 my-8">
 
       <aside
-        class="relative hidden flex-col justify-between overflow-hidden bg-gradient-to-br from-teal-50/90 via-cyan-50/80 to-white/90 p-10 lg:col-span-5 lg:flex border-r border-cyan-100/50">
+        class="relative hidden flex-col justify-between overflow-hidden bg-gradient-to-br from-blue-50/90 via-slate-50/80 to-white/95 p-10 lg:col-span-5 lg:flex border-r border-blue-100/60">
         <div class="relative z-10">
           <div
-            class="inline-flex items-center gap-3.5 rounded-2xl border border-teal-100/50 bg-white/60 px-4 py-2.5 backdrop-blur-md shadow-sm">
+            class="inline-flex items-center gap-3.5 rounded-2xl border border-blue-100/60 bg-white/70 px-4 py-2.5 backdrop-blur-md shadow-sm">
             <img src="/donga.png" alt="EAUT Official Logo" class="size-11 object-contain drop-shadow-sm" />
             <div class="text-left leading-tight">
-              <span class="block text-sm font-extrabold uppercase tracking-wider text-teal-700">ClassHub</span>
+              <span class="block text-sm font-extrabold uppercase tracking-wider text-brand">ClassHub</span>
               <span class="block text-[11px] text-slate-500">Đại Học Công Nghệ Đông Á</span>
             </div>
           </div>
 
           <h2 class="mt-8 text-3xl font-bold tracking-tight text-slate-800 leading-snug">
             Hệ Thống quản lý <br />
-            <span class="bg-gradient-to-r from-teal-600 via-cyan-600 to-blue-600 bg-clip-text text-transparent">Tài sản
+            <span class="bg-gradient-to-r from-brand-dark to-brand bg-clip-text text-transparent">Tài sản
               và Phòng học</span>
           </h2>
           <p class="mt-3 text-sm leading-relaxed text-slate-600">
@@ -94,7 +94,7 @@ async function register() {
 
         <div class="relative z-10 my-8 space-y-3.5">
           <div
-            class="flex items-center gap-3.5 rounded-2xl border border-cyan-100 bg-white/60 p-3.5 backdrop-blur-md shadow-sm">
+            class="flex items-center gap-3.5 rounded-2xl border border-blue-100/70 bg-white/70 p-3.5 backdrop-blur-md shadow-sm">
             <div class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-600">
               <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -108,8 +108,8 @@ async function register() {
           </div>
 
           <div
-            class="flex items-center gap-3.5 rounded-2xl border border-cyan-100 bg-white/60 p-3.5 backdrop-blur-md shadow-sm">
-            <div class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-cyan-100 text-cyan-600">
+            class="flex items-center gap-3.5 rounded-2xl border border-blue-100/70 bg-white/70 p-3.5 backdrop-blur-md shadow-sm">
+            <div class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-brand">
               <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                   d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
@@ -122,8 +122,8 @@ async function register() {
           </div>
 
           <div
-            class="flex items-center gap-3.5 rounded-2xl border border-cyan-100 bg-white/60 p-3.5 backdrop-blur-md shadow-sm">
-            <div class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-teal-100 text-teal-600">
+            class="flex items-center gap-3.5 rounded-2xl border border-blue-100/70 bg-white/70 p-3.5 backdrop-blur-md shadow-sm">
+            <div class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
               <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
@@ -135,13 +135,13 @@ async function register() {
           </div>
         </div>
 
-        <div class="relative z-10 border-t border-cyan-200/60 pt-4 text-xs text-slate-500">
+        <div class="relative z-10 border-t border-blue-100 pt-4 text-xs text-slate-500">
           © 2026 by Harvey Pham
         </div>
       </aside>
 
       <section
-        class="flex flex-col justify-center p-6 sm:p-10 lg:col-span-7 bg-white/40 overflow-y-auto max-h-[90vh] custom-scrollbar">
+        class="flex flex-col justify-center p-6 sm:p-10 lg:col-span-7 bg-white/60 overflow-y-auto max-h-[90vh] custom-scrollbar">
         <div class="mx-auto w-full max-w-lg">
 
           <div class="mb-6 text-center">
@@ -179,7 +179,7 @@ async function register() {
                 Mã sinh viên <span class="text-rose-500">*</span>
               </label>
               <input v-model="maSv" required placeholder="VD: 20261234"
-                class="h-11 w-full rounded-2xl border border-cyan-200 bg-white/70 px-4 text-sm text-slate-800 placeholder-slate-400 outline-none transition duration-200 focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-500/20 shadow-sm" />
+                class="h-11 w-full rounded-2xl border border-blue-100 bg-white/80 px-4 text-sm text-slate-800 placeholder-slate-400 outline-none transition duration-200 focus:border-brand focus:bg-white focus:ring-4 focus:ring-blue-500/20 shadow-sm" />
             </div>
 
             <div class="space-y-1.5 sm:col-span-1">
@@ -187,7 +187,7 @@ async function register() {
                 Họ và tên <span class="text-rose-500">*</span>
               </label>
               <input v-model="hoTen" required placeholder="Nguyễn Văn A"
-                class="h-11 w-full rounded-2xl border border-cyan-200 bg-white/70 px-4 text-sm text-slate-800 placeholder-slate-400 outline-none transition duration-200 focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-500/20 shadow-sm" />
+                class="h-11 w-full rounded-2xl border border-blue-100 bg-white/80 px-4 text-sm text-slate-800 placeholder-slate-400 outline-none transition duration-200 focus:border-brand focus:bg-white focus:ring-4 focus:ring-blue-500/20 shadow-sm" />
             </div>
 
             <div class="space-y-1.5 sm:col-span-1">
@@ -195,7 +195,7 @@ async function register() {
                 Lớp học
               </label>
               <input v-model="tenLop" placeholder="VD: DCCNTT.14.3"
-                class="h-11 w-full rounded-2xl border border-cyan-200 bg-white/70 px-4 text-sm text-slate-800 placeholder-slate-400 outline-none transition duration-200 focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-500/20 shadow-sm" />
+                class="h-11 w-full rounded-2xl border border-blue-100 bg-white/80 px-4 text-sm text-slate-800 placeholder-slate-400 outline-none transition duration-200 focus:border-brand focus:bg-white focus:ring-4 focus:ring-blue-500/20 shadow-sm" />
             </div>
 
             <div class="space-y-1.5 sm:col-span-1">
@@ -203,7 +203,7 @@ async function register() {
                 Số điện thoại
               </label>
               <input v-model="sdt" type="tel" placeholder="0912345678"
-                class="h-11 w-full rounded-2xl border border-cyan-200 bg-white/70 px-4 text-sm text-slate-800 placeholder-slate-400 outline-none transition duration-200 focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-500/20 shadow-sm" />
+                class="h-11 w-full rounded-2xl border border-blue-100 bg-white/80 px-4 text-sm text-slate-800 placeholder-slate-400 outline-none transition duration-200 focus:border-brand focus:bg-white focus:ring-4 focus:ring-blue-500/20 shadow-sm" />
             </div>
 
             <div class="space-y-1.5 sm:col-span-2">
@@ -211,7 +211,7 @@ async function register() {
                 Email EAUT <span class="text-rose-500">*</span>
               </label>
               <input v-model="email" type="email" required placeholder="masv@eaut.edu.vn"
-                class="h-11 w-full rounded-2xl border border-cyan-200 bg-white/70 px-4 text-sm text-slate-800 placeholder-slate-400 outline-none transition duration-200 focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-500/20 shadow-sm" />
+                class="h-11 w-full rounded-2xl border border-blue-100 bg-white/80 px-4 text-sm text-slate-800 placeholder-slate-400 outline-none transition duration-200 focus:border-brand focus:bg-white focus:ring-4 focus:ring-blue-500/20 shadow-sm" />
             </div>
 
             <div class="space-y-1.5 sm:col-span-1">
@@ -221,9 +221,9 @@ async function register() {
               <div class="relative">
                 <input v-model="matKhau" :type="showPassword ? 'text' : 'password'" required
                   placeholder="Tối thiểu 6 ký tự"
-                  class="h-11 w-full rounded-2xl border border-cyan-200 bg-white/70 pl-4 pr-10 text-sm text-slate-800 placeholder-slate-400 outline-none transition duration-200 focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-500/20 shadow-sm" />
+                  class="h-11 w-full rounded-2xl border border-blue-100 bg-white/80 pl-4 pr-10 text-sm text-slate-800 placeholder-slate-400 outline-none transition duration-200 focus:border-brand focus:bg-white focus:ring-4 focus:ring-blue-500/20 shadow-sm" />
                 <button type="button" @click="showPassword = !showPassword"
-                  class="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-teal-600 transition"
+                  class="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-brand transition"
                   tabindex="-1">
                   <svg v-if="!showPassword" class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"
@@ -246,9 +246,9 @@ async function register() {
               <div class="relative">
                 <input v-model="xacNhanMatKhau" :type="showConfirmPassword ? 'text' : 'password'" required
                   placeholder="Nhập lại mật khẩu"
-                  class="h-11 w-full rounded-2xl border border-cyan-200 bg-white/70 pl-4 pr-10 text-sm text-slate-800 placeholder-slate-400 outline-none transition duration-200 focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-500/20 shadow-sm" />
+                  class="h-11 w-full rounded-2xl border border-blue-100 bg-white/80 pl-4 pr-10 text-sm text-slate-800 placeholder-slate-400 outline-none transition duration-200 focus:border-brand focus:bg-white focus:ring-4 focus:ring-blue-500/20 shadow-sm" />
                 <button type="button" @click="showConfirmPassword = !showConfirmPassword"
-                  class="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-teal-600 transition"
+                  class="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-brand transition"
                   tabindex="-1">
                   <svg v-if="!showConfirmPassword" class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"
@@ -266,7 +266,7 @@ async function register() {
 
             <!-- Submit Button -->
             <button type="submit" :disabled="isLoading"
-              class="relative mt-2 flex h-12 w-full sm:col-span-2 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 font-bold text-white shadow-lg shadow-cyan-500/30 transition-all duration-300 hover:brightness-110 hover:shadow-cyan-500/40 active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed">
+              class="relative mt-2 flex h-12 w-full sm:col-span-2 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-r from-brand-dark to-brand font-bold text-white shadow-lg shadow-blue-600/30 transition-all duration-300 hover:brightness-105 hover:shadow-blue-600/40 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed">
               <svg v-if="isLoading" class="size-5 animate-spin mr-2 text-white" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor"
@@ -280,9 +280,9 @@ async function register() {
           <!-- Login Link -->
           <p class="mt-6 text-center text-sm text-slate-500">
             Đã có tài khoản?
-            <a href="/login" class="ml-1 font-semibold text-teal-600 transition hover:text-teal-500 hover:underline">
+            <router-link to="/login" class="ml-1 font-semibold text-brand transition hover:text-brand-dark hover:underline">
               Đăng nhập ngay
-            </a>
+            </router-link>
           </p>
 
         </div>

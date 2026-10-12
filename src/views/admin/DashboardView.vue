@@ -180,7 +180,7 @@ const donutSeries = computed(() => {
     <div class="w-full">
       
       <!-- Header -->
-      <div class="sticky top-0 z-40 bg-mist/95 backdrop-blur-sm border-b border-slate-200/60 shadow-sm px-8 sm:px-10 lg:px-32 pt-6 pb-4">
+      <div class="sticky top-0 z-40 bg-mist/95 backdrop-blur-sm border-b border-slate-200/60 shadow-sm px-4 sm:px-6 lg:px-8 xl:px-12 pt-6 pb-4">
         <div class="flex items-center justify-between">
           <div>
             <p class="text-[11px] font-bold uppercase tracking-widest text-slate-400">Class Hub Admin</p>
@@ -202,7 +202,7 @@ const donutSeries = computed(() => {
       </div>
 
       <!-- Nội dung chính -->
-      <div class="px-8 sm:px-10 lg:px-32 pt-5 pb-10">
+      <div class="px-4 sm:px-6 lg:px-8 xl:px-12 pt-5 pb-10">
         
         <!-- Filter thời gian -->
         <div class="flex justify-end mb-4">
@@ -223,27 +223,32 @@ const donutSeries = computed(() => {
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
           <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col justify-between">
             <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Tổng số lượt mượn</p>
-            <p class="text-2xl sm:text-3xl font-bold text-slate-900 mt-3 tracking-tight">{{ stats.totalBorrows }}</p>
+            <div v-if="isLoading" class="h-8 w-20 bg-slate-200/80 animate-pulse rounded-lg mt-3"></div>
+            <p v-else class="text-2xl sm:text-3xl font-bold text-slate-900 mt-3 tracking-tight">{{ stats.totalBorrows }}</p>
             <p class="mt-1 text-[11px] text-slate-400">Lượt mượn trong {{ activeTimeFilter }}</p>
           </div>
           <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col justify-between">
             <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Tổng số tủ / phòng</p>
-            <p class="text-2xl sm:text-3xl font-bold text-slate-900 mt-3 tracking-tight">{{ stats.totalCabinets }}</p>
+            <div v-if="isLoading" class="h-8 w-16 bg-slate-200/80 animate-pulse rounded-lg mt-3"></div>
+            <p v-else class="text-2xl sm:text-3xl font-bold text-slate-900 mt-3 tracking-tight">{{ stats.totalCabinets }}</p>
             <p class="mt-1 text-[11px] text-slate-400">Thiết bị trên hệ thống</p>
           </div>
           <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col justify-between">
             <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Đang mượn</p>
-            <p class="text-2xl sm:text-3xl font-bold text-amber-600 mt-3 tracking-tight">{{ stats.activeBorrows }}</p>
+            <div v-if="isLoading" class="h-8 w-14 bg-amber-100 animate-pulse rounded-lg mt-3"></div>
+            <p v-else class="text-2xl sm:text-3xl font-bold text-amber-600 mt-3 tracking-tight">{{ stats.activeBorrows }}</p>
             <p class="mt-1 text-[11px] text-slate-400">Lượt mượn đang active</p>
           </div>
           <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col justify-between">
             <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Hôm nay</p>
-            <p class="text-2xl sm:text-3xl font-bold text-emerald-600 mt-3 tracking-tight">{{ stats.todayBorrows }}</p>
+            <div v-if="isLoading" class="h-8 w-14 bg-emerald-100 animate-pulse rounded-lg mt-3"></div>
+            <p v-else class="text-2xl sm:text-3xl font-bold text-emerald-600 mt-3 tracking-tight">{{ stats.todayBorrows }}</p>
             <p class="mt-1 text-[11px] text-slate-400">Lượt mượn trong ngày</p>
           </div>
           <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col justify-between">
             <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Bảo trì / Mất mạng</p>
-            <p class="text-2xl sm:text-3xl font-bold text-red-600 mt-3 tracking-tight">{{ stats.maintenance }}</p>
+            <div v-if="isLoading" class="h-8 w-14 bg-red-100 animate-pulse rounded-lg mt-3"></div>
+            <p v-else class="text-2xl sm:text-3xl font-bold text-red-600 mt-3 tracking-tight">{{ stats.maintenance }}</p>
             <p class="mt-1 text-[11px] text-slate-400">Phòng/tủ cần kiểm tra</p>
           </div>
         </div>
@@ -295,27 +300,41 @@ const donutSeries = computed(() => {
           <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col h-[360px]">
             <h2 class="text-sm font-bold uppercase tracking-wider text-slate-700 mb-4 shrink-0">Xếp hạng lượt mượn của người dùng</h2>
             <div class="flex-1 overflow-y-auto pr-2 flex flex-col gap-3 scrollbar-thin scrollbar-thumb-slate-200">
-              <div 
-                v-for="user in topBorrowers" 
-                :key="user.id"
-                class="flex items-center justify-between border-b border-slate-100 pb-3 last:border-0 last:pb-0"
-              >
-                <div class="flex items-center gap-3">
-                  <span :class="['flex size-7 items-center justify-center rounded-full text-xs font-bold', user.avatarBg]">
-                    {{ user.rank }}
-                  </span>
-                  <div>
-                    <p class="text-xs font-semibold text-slate-800">{{ user.name }}</p>
-                    <p class="text-[10px] text-slate-400">Mã SV/GV: {{ user.id }}</p>
+              <template v-if="isLoading">
+                <div v-for="i in 4" :key="`skel-top-${i}`" class="flex items-center justify-between border-b border-slate-100 pb-3 last:border-0 animate-pulse">
+                  <div class="flex items-center gap-3">
+                    <div class="size-7 rounded-full bg-slate-200"></div>
+                    <div class="flex flex-col gap-1.5">
+                      <div class="h-3.5 w-24 bg-slate-200 rounded"></div>
+                      <div class="h-2.5 w-16 bg-slate-100 rounded"></div>
+                    </div>
+                  </div>
+                  <div class="h-6 w-14 bg-slate-200 rounded-lg"></div>
+                </div>
+              </template>
+              <template v-else-if="topBorrowers.length > 0">
+                <div 
+                  v-for="user in topBorrowers" 
+                  :key="user.id"
+                  class="flex items-center justify-between border-b border-slate-100 pb-3 last:border-0 last:pb-0"
+                >
+                  <div class="flex items-center gap-3">
+                    <span :class="['flex size-7 items-center justify-center rounded-full text-xs font-bold', user.avatarBg]">
+                      {{ user.rank }}
+                    </span>
+                    <div>
+                      <p class="text-xs font-semibold text-slate-800">{{ user.name }}</p>
+                      <p class="text-[10px] text-slate-400">Mã SV/GV: {{ user.id }}</p>
+                    </div>
+                  </div>
+                  <div class="text-right">
+                    <span class="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100">
+                      {{ user.total }} lượt
+                    </span>
                   </div>
                 </div>
-                <div class="text-right">
-                  <span class="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100">
-                    {{ user.total }} lượt
-                  </span>
-                </div>
-              </div>
-              <div v-if="topBorrowers.length === 0" class="text-center text-xs text-slate-400 py-8">
+              </template>
+              <div v-else class="text-center text-xs text-slate-400 py-8">
                 Chưa có dữ liệu người dùng mượn
               </div>
             </div>
@@ -324,45 +343,55 @@ const donutSeries = computed(() => {
           <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col h-[360px]">
             <h2 class="text-sm font-bold uppercase tracking-wider text-slate-700 mb-4 shrink-0">Hoạt động gần đây</h2>
             <div class="flex-1 overflow-y-auto pr-2 flex flex-col gap-3.5 scrollbar-thin scrollbar-thumb-slate-200">
-              <div 
-                v-for="activity in recentActivities" 
-                :key="activity.id"
-                class="flex items-start gap-3 border-b border-slate-100 pb-3 last:border-0 last:pb-0"
-              >
-                <div :class="[activity.bg, activity.color]" class="flex size-8 shrink-0 items-center justify-center rounded-full">
-                  <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                  </svg>
-                </div>
-                
-                <div class="flex-1 min-w-0">
-                  <p class="text-xs font-semibold text-slate-800 leading-snug">
-                    {{ activity.user }} <span class="font-normal text-slate-500">thực hiện</span> <span class="font-bold text-slate-700">{{ activity.action }}</span>
-                  </p>
-                  
-                  <div class="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
-                    <span class="text-slate-600 font-medium">{{ activity.details }}</span>
-                    <span>•</span>
-                    <span class="text-slate-400">{{ activity.time }}</span>
-                    
-                    <span 
-                      v-if="activity.ip_address" 
-                      class="inline-flex items-center rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-mono text-slate-600 border border-slate-200/60"
-                    >
-                      IP: {{ activity.ip_address }}
-                    </span>
-
-                    <span 
-                      v-if="activity.user_agent" 
-                      class="inline-flex items-center rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 border border-blue-100"
-                    >
-                      UA: {{ activity.user_agent }}
-                    </span>
+              <template v-if="isLoading">
+                <div v-for="i in 4" :key="`skel-act-${i}`" class="flex items-start gap-3 border-b border-slate-100 pb-3 last:border-0 animate-pulse">
+                  <div class="size-8 rounded-full bg-slate-200 shrink-0"></div>
+                  <div class="flex-1 flex flex-col gap-2">
+                    <div class="h-3.5 w-3/4 bg-slate-200 rounded"></div>
+                    <div class="h-2.5 w-1/3 bg-slate-100 rounded"></div>
                   </div>
                 </div>
-              </div>
+              </template>
+              <template v-else-if="recentActivities.length > 0">
+                <div 
+                  v-for="activity in recentActivities" 
+                  :key="activity.id"
+                  class="flex items-start gap-3 border-b border-slate-100 pb-3 last:border-0 last:pb-0"
+                >
+                  <div :class="[activity.bg, activity.color]" class="flex size-8 shrink-0 items-center justify-center rounded-full">
+                    <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                    </svg>
+                  </div>
+                  
+                  <div class="flex-1 min-w-0">
+                    <p class="text-xs font-semibold text-slate-800 leading-snug">
+                      {{ activity.user }} <span class="font-normal text-slate-500">thực hiện</span> <span class="font-bold text-slate-700">{{ activity.action }}</span>
+                    </p>
+                    
+                    <div class="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
+                      <span class="text-slate-600 font-medium">{{ activity.details }}</span>
+                      <span>•</span>
+                      <span class="text-slate-400">{{ activity.time }}</span>
+                      
+                      <span 
+                        v-if="activity.ip_address" 
+                        class="inline-flex items-center rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-mono text-slate-600 border border-slate-200/60"
+                      >
+                        IP: {{ activity.ip_address }}
+                      </span>
 
-              <div v-if="recentActivities.length === 0" class="text-center text-xs text-slate-400 py-8">
+                      <span 
+                        v-if="activity.user_agent" 
+                        class="inline-flex items-center rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 border border-blue-100"
+                      >
+                        UA: {{ activity.user_agent }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </template>
+              <div v-else class="text-center text-xs text-slate-400 py-8">
                 Chưa có nhật ký hoạt động nào
               </div>
             </div>

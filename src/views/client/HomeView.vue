@@ -28,6 +28,7 @@ const toastMessage = ref('')
 const showErrorToast = ref(false)
 const errorMessage = ref('')
 const previewEquipment = ref(null)
+const isLoadingRooms = ref(true)
 
 let unsubscribeCabinetStatus = null
 
@@ -54,6 +55,7 @@ function onDelegateInput(e) {
 }
 
 async function fetchRooms() {
+  isLoadingRooms.value = true
   try {
     const response = await api.get('/rooms/get-rooms')
     if (Array.isArray(response)) {
@@ -72,6 +74,8 @@ async function fetchRooms() {
     }
   } catch (err) { 
     console.error('Lỗi tải phòng:', err) 
+  } finally {
+    isLoadingRooms.value = false
   }
 }
 
@@ -445,15 +449,55 @@ onUnmounted(() => {
         </div>
       </section>
 
-      <section class="mb-10 rounded-3xl border border-blue-200 bg-white p-6 shadow-sm">
-        <div class="mb-8 flex flex-wrap gap-4 border-b border-blue-50 pb-5 text-xs font-semibold text-slate-500">
-          <div class="flex items-center gap-2"><span class="size-3 rounded-full bg-emerald-400"></span> Trống / Sẵn sàng</div>
-          <div class="flex items-center gap-2"><span class="size-3 rounded-full bg-slate-300"></span> Đã có người mượn</div>
-          <div class="flex items-center gap-2"><span class="size-3 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.8)]"></span> Tủ của bạn (Bấm để thao tác)</div>
-          <div class="flex items-center gap-2"><span class="size-3 rounded-full bg-red-400"></span> Đang bảo trì / Mất kết nối</div>
+      <section class="mb-10 rounded-3xl border border-blue-200 bg-white p-4 sm:p-6 shadow-sm">
+        <div class="mb-6 flex flex-wrap items-center gap-2 sm:gap-3 border-b border-blue-50 pb-4 text-xs font-semibold text-slate-500">
+          <div class="inline-flex items-center gap-1.5 rounded-lg bg-slate-50 border border-slate-100 px-2.5 py-1">
+            <span class="size-2.5 rounded-full bg-emerald-500"></span>
+            <span>Trống / Sẵn sàng</span>
+          </div>
+          <div class="inline-flex items-center gap-1.5 rounded-lg bg-slate-50 border border-slate-100 px-2.5 py-1">
+            <span class="size-2.5 rounded-full bg-slate-300"></span>
+            <span>Đã có người mượn</span>
+          </div>
+          <div class="inline-flex items-center gap-1.5 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-1 text-amber-900">
+            <span class="size-2.5 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.8)]"></span>
+            <span>Tủ của bạn</span>
+          </div>
+          <div class="inline-flex items-center gap-1.5 rounded-lg bg-red-50 border border-red-100 px-2.5 py-1 text-red-700">
+            <span class="size-2.5 rounded-full bg-red-500"></span>
+            <span>Bảo trì / Mất kết nối</span>
+          </div>
         </div>
 
-        <div v-if="Object.keys(groupedByBuildingAndFloor).length === 0" class="py-10 text-center text-slate-400">Không có thiết bị phù hợp bộ lọc.</div>
+        <!-- Skeleton Loading State khi tải danh sách tủ -->
+        <div v-if="isLoadingRooms" class="py-4">
+          <div class="mb-6 flex items-center gap-3">
+            <div class="size-8 rounded-lg bg-slate-200 animate-pulse"></div>
+            <div class="h-6 w-36 bg-slate-200 animate-pulse rounded-lg"></div>
+          </div>
+          <div class="grid grid-cols-2 min-[440px]:grid-cols-3 sm:grid-cols-6 lg:grid-cols-8 gap-3 sm:gap-x-4 sm:gap-y-6">
+            <div
+              v-for="i in 8"
+              :key="`skel-cab-${i}`"
+              class="relative flex flex-col justify-between p-2.5 h-28 sm:h-32 rounded-xl bg-slate-100 border border-slate-200 animate-pulse"
+            >
+              <div class="h-5 w-3/4 mx-auto bg-slate-200/80 rounded-lg"></div>
+              <div class="flex flex-col gap-1.5 px-2">
+                <div class="h-1 w-full bg-slate-200/70 rounded-full"></div>
+                <div class="h-1 w-full bg-slate-200/70 rounded-full"></div>
+                <div class="h-1 w-full bg-slate-200/70 rounded-full"></div>
+              </div>
+              <div class="h-3 w-1/2 mx-auto bg-slate-200/50 rounded"></div>
+            </div>
+          </div>
+        </div>
+
+        <div v-else-if="Object.keys(groupedByBuildingAndFloor).length === 0" class="py-12 text-center text-slate-400">
+          <svg class="size-10 mx-auto text-slate-300 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+          </svg>
+          <p class="text-sm font-medium">Không tìm thấy thiết bị phù hợp với bộ lọc</p>
+        </div>
 
         <div v-for="(floors, buildingName) in groupedByBuildingAndFloor" :key="buildingName" class="mb-12 last:mb-0">
           <div class="mb-6 flex items-center gap-3 border-b-2 border-blue-500/20 pb-3">
@@ -466,29 +510,29 @@ onUnmounted(() => {
             <h2 class="text-xl font-black uppercase text-blue-700">{{ buildingName }}</h2>
           </div>
 
-          <div class="flex flex-col-reverse gap-8 px-2 sm:px-4">
+          <div class="flex flex-col-reverse gap-8 px-1 sm:px-4">
             <div v-for="(cabs, floorName) in floors" :key="floorName"
               class="border-b border-dashed border-blue-100 pb-8 last:border-0 last:pb-0">
-              <h3 class="mb-5 text-lg font-bold text-slate-400 uppercase tracking-wider">{{ floorName }}</h3>
+              <h3 class="mb-4 text-sm sm:text-base font-bold text-slate-400 uppercase tracking-wider">{{ floorName }}</h3>
 
-              <div class="grid grid-cols-3 gap-x-4 gap-y-6 sm:grid-cols-6 lg:grid-cols-8">
+              <div class="grid grid-cols-2 min-[440px]:grid-cols-3 sm:grid-cols-6 lg:grid-cols-8 gap-3 sm:gap-x-4 sm:gap-y-6">
                 <div v-for="cab in cabs" :key="cab.id" :id="`cabinet-${cab.id}`" @click="handleCabinetClick(cab)"
-                  class="relative flex flex-col items-center justify-between p-2 h-32 rounded-md border-b-8 transition-all cursor-pointer hover:-translate-y-1"
+                  class="relative flex flex-col items-center justify-between p-2.5 h-28 sm:h-32 rounded-xl border-b-8 transition-all cursor-pointer select-none hover:-translate-y-1 active:scale-[0.97]"
                   :class="{
                     'bg-amber-400 border-amber-600 shadow-[0_0_15px_rgba(245,158,11,0.6)] hover:shadow-[0_0_20px_rgba(245,158,11,0.8)] ring-2 ring-amber-500': getCabinetStatus(cab) === 'MINE',
                     'bg-emerald-400 border-emerald-600 hover:shadow-lg': getCabinetStatus(cab) === 'AVAILABLE',
                     'bg-slate-300 border-slate-400 opacity-60 hover:opacity-80': getCabinetStatus(cab) === 'BOOKED',
                     'bg-red-400 border-red-600 opacity-80': getCabinetStatus(cab) === 'MAINTENANCE'
                   }">
-                  <div class="w-full bg-white/40 rounded text-center text-[11px] font-black text-slate-800 py-1 shadow-inner truncate px-1">
+                  <div class="w-full bg-white/70 backdrop-blur-xs rounded-lg text-center text-xs font-black text-slate-800 py-1.5 shadow-xs truncate px-1.5">
                     {{ cab.name }}
                   </div>
-                  <div class="flex flex-col gap-1 w-full px-3 opacity-30">
+                  <div class="flex flex-col gap-1 w-full px-2 sm:px-3 opacity-30">
                     <div class="h-1 w-full bg-black rounded-full"></div>
                     <div class="h-1 w-full bg-black rounded-full"></div>
                     <div class="h-1 w-full bg-black rounded-full"></div>
                   </div>
-                  <div class="absolute right-2 top-12 h-8 w-1.5 bg-white/70 rounded-full shadow-sm"></div>
+                  <div class="absolute right-2 sm:right-2.5 top-1/2 -translate-y-1/2 h-7 sm:h-8 w-1.5 bg-white/80 rounded-full shadow-xs"></div>
                   
                   <div v-if="getCabinetStatus(cab) === 'MINE'"
                     class="absolute -top-3 -right-2 bg-white rounded-full p-1.5 shadow-md animate-bounce text-blue-600 ring-2 ring-blue-600">

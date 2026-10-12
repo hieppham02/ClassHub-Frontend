@@ -55,7 +55,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <main class="min-h-screen bg-mist pb-20 sm:pb-0">
+  <main class="min-h-[100dvh] bg-mist pb-24 sm:pb-8">
     <Navbar :user="user" :currentPath="currentPath" @logout="logout" />
 
     <div class="mx-auto max-w-4xl px-5 py-12 lg:px-8">
