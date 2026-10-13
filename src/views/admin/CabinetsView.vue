@@ -1,5 +1,9 @@
 <script setup>
+import AppModal from '@/components/shared/AppModal.vue'
 import AdminLayout from '@/components/admin/layout/AdminLayout.vue'
+import AdminPageTitle from '@/components/admin/layout/AdminPageTitle.vue'
+import TablePagination from '@/components/shared/TablePagination.vue'
+import { usePagination } from '@/composables/usePagination.js'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { api } from '@/services/apiClient.js'
 import { cabinetHub } from '@/services/cabinetHub.js'
@@ -7,7 +11,7 @@ import { cabinetHub } from '@/services/cabinetHub.js'
 const search = ref('')
 const statusFilter = ref('Trạng thái tủ')
 const doorFilter = ref('Tình trạng cửa')
-const networkFilter = ref('Tình trạng mạng')
+const networkFilter = ref('Kết nối')
 const isLoading = ref(false)
 const cabinets = ref([])
 
@@ -184,7 +188,7 @@ const filteredCabinets = computed(() => {
   return cabinets.value.filter(c => {
     const matchStatus = statusFilter.value === 'Trạng thái tủ' || c.status === statusFilter.value
     const matchDoor = doorFilter.value === 'Tình trạng cửa' || c.doorCondition === doorFilter.value
-    const matchNetwork = networkFilter.value === 'Tình trạng mạng'
+    const matchNetwork = networkFilter.value === 'Kết nối'
       || (networkFilter.value === 'Online' && c.isOnline)
       || (networkFilter.value === 'Offline' && !c.isOnline)
 
@@ -199,6 +203,7 @@ const filteredCabinets = computed(() => {
     return matchStatus && matchDoor && matchNetwork && matchSearch
   })
 })
+const { page, pageItems: pagedCabinets, totalItems } = usePagination(filteredCabinets, [search, statusFilter, doorFilter, networkFilter])
 </script>
 
 <template>
@@ -207,10 +212,7 @@ const filteredCabinets = computed(() => {
       <!-- Header NEO CỐ ĐỊNH -->
       <div
         class="sticky top-0 z-40 bg-mist/95 backdrop-blur-sm border-b border-slate-200/60 shadow-sm px-4 sm:px-6 lg:px-8 xl:px-12 pt-6 pb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p class="text-xs font-bold uppercase tracking-widest text-slate-400">Quản lý phần cứng</p>
-          <h1 class="mt-0.5 text-2xl font-black text-slate-800">Tủ đồ thiết bị thông minh</h1>
-        </div>
+        <AdminPageTitle eyebrow="Quản lý phần cứng" title="Tủ đồ thiết bị thông minh" />
         <div class="flex items-center gap-3">
           <button @click="fetchCabinets" :disabled="isLoading"
             class="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 h-10 text-xs font-bold text-slate-600 hover:bg-slate-50 transition shadow-sm disabled:opacity-60">
@@ -239,7 +241,7 @@ const filteredCabinets = computed(() => {
 
           <select v-model="networkFilter"
             class="h-11 rounded-xl border border-blue-100 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-blue-500 sm:w-44 shadow-sm">
-            <option>Tình trạng mạng</option>
+            <option>Kết nối</option>
             <option>Online</option>
             <option>Offline</option>
           </select>
@@ -266,7 +268,7 @@ const filteredCabinets = computed(() => {
                     Vị trí</th>
                   <th
                     class="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500 whitespace-nowrap">
-                    Mạng</th>
+                    Kết nối</th>
                   <th
                     class="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500 whitespace-nowrap">
                     Trạng thái</th>
@@ -289,18 +291,30 @@ const filteredCabinets = computed(() => {
                       <div class="h-4 w-28 bg-slate-200 rounded"></div>
                       <div class="h-2.5 w-20 bg-slate-100 rounded mt-2"></div>
                     </td>
-                    <td class="px-5 py-4"><div class="h-4 w-24 bg-slate-200 rounded"></div></td>
-                    <td class="px-5 py-4"><div class="h-5 w-14 bg-slate-200 rounded-md"></div></td>
-                    <td class="px-5 py-4"><div class="h-5 w-16 bg-slate-200 rounded-md"></div></td>
-                    <td class="px-5 py-4 text-center"><div class="h-5 w-12 bg-slate-200 rounded-lg mx-auto"></div></td>
-                    <td class="px-5 py-4"><div class="h-4 w-20 bg-slate-100 rounded"></div></td>
-                    <td class="px-5 py-4 text-center"><div class="h-7 w-28 bg-slate-200 rounded-lg mx-auto"></div></td>
+                    <td class="px-5 py-4">
+                      <div class="h-4 w-24 bg-slate-200 rounded"></div>
+                    </td>
+                    <td class="px-5 py-4">
+                      <div class="h-5 w-14 bg-slate-200 rounded-md"></div>
+                    </td>
+                    <td class="px-5 py-4">
+                      <div class="h-5 w-16 bg-slate-200 rounded-md"></div>
+                    </td>
+                    <td class="px-5 py-4 text-center">
+                      <div class="h-5 w-12 bg-slate-200 rounded-lg mx-auto"></div>
+                    </td>
+                    <td class="px-5 py-4">
+                      <div class="h-4 w-20 bg-slate-100 rounded"></div>
+                    </td>
+                    <td class="px-5 py-4 text-center">
+                      <div class="h-7 w-28 bg-slate-200 rounded-lg mx-auto"></div>
+                    </td>
                   </tr>
                 </template>
 
                 <!-- Danh sách dữ liệu thực tế -->
                 <template v-else-if="filteredCabinets.length > 0">
-                  <tr v-for="cab in filteredCabinets" :key="cab.id"
+                  <tr v-for="cab in pagedCabinets" :key="cab.id"
                     class="border-b border-blue-50 transition hover:bg-blue-50/30">
 
                     <td class="px-5 py-4 font-bold text-slate-800 whitespace-nowrap">
@@ -384,8 +398,10 @@ const filteredCabinets = computed(() => {
                 <!-- Trạng thái trống không có dữ liệu -->
                 <tr v-else>
                   <td colspan="7" class="py-16 text-center text-slate-400">
-                    <svg class="size-9 mx-auto text-slate-300 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    <svg class="size-9 mx-auto text-slate-300 mb-2" fill="none" viewBox="0 0 24 24"
+                      stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                     <p class="text-sm font-medium">Không tìm thấy tủ đồ nào phù hợp bộ lọc.</p>
                   </td>
@@ -393,72 +409,38 @@ const filteredCabinets = computed(() => {
               </tbody>
             </table>
           </div>
+          <TablePagination v-model:page="page" :total-items="totalItems" :disabled="isLoading" label="tủ thiết bị" />
         </div>
 
       </div>
     </div>
 
     <!-- Custom Confirmation Dialog (Replaces native browser confirm) -->
-    <div v-if="confirmModal.show"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4"
-      @click.self="closeConfirmModal">
-      <div class="w-full max-w-md rounded-2xl border border-slate-200/80 bg-white p-6 shadow-2xl transition-all">
-        <div class="flex items-start gap-4">
-          <div :class="{
-            'bg-blue-100 text-blue-600': confirmModal.confirmVariant === 'primary',
-            'bg-amber-100 text-amber-600': confirmModal.confirmVariant === 'warning',
-            'bg-rose-100 text-rose-600': confirmModal.confirmVariant === 'danger'
-          }" class="flex size-11 shrink-0 items-center justify-center rounded-xl">
-            <svg v-if="confirmModal.confirmVariant === 'primary'" class="size-6" fill="none" viewBox="0 0 24 24"
-              stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round"
-                d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
-            </svg>
-            <svg v-else-if="confirmModal.confirmVariant === 'warning'" class="size-6" fill="none" viewBox="0 0 24 24"
-              stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round"
-                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-            </svg>
-            <svg v-else class="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round"
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-          </div>
-
-          <div class="flex-1 min-w-0">
-            <h3 class="text-base font-bold text-slate-900 leading-snug">{{ confirmModal.title }}</h3>
-            <p class="mt-1 text-xs text-slate-500 leading-relaxed">{{ confirmModal.message }}</p>
-          </div>
-        </div>
-
-        <div class="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-3 flex items-center justify-between text-xs">
-          <span class="font-semibold text-slate-500">Tủ tác động:</span>
-          <span class="font-bold text-slate-800">{{ confirmModal.cabName }}</span>
-        </div>
-
-        <div class="mt-6 flex items-center justify-end gap-2.5">
-          <button @click="closeConfirmModal" :disabled="confirmModal.isProcessing"
-            class="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 active:scale-[0.98] transition disabled:opacity-50">
-            Hủy bỏ
-          </button>
-          <button @click="executeModalAction" :disabled="confirmModal.isProcessing" :class="{
-            'bg-blue-600 hover:bg-blue-700 text-white': confirmModal.confirmVariant === 'primary',
-            'bg-amber-600 hover:bg-amber-700 text-white': confirmModal.confirmVariant === 'warning',
-            'bg-rose-600 hover:bg-rose-700 text-white': confirmModal.confirmVariant === 'danger'
-          }"
-            class="flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold shadow-sm active:scale-[0.98] transition disabled:opacity-50">
-            <svg v-if="confirmModal.isProcessing" class="size-3.5 animate-spin text-white" fill="none"
-              viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
-              </path>
-            </svg>
-            <span>{{ confirmModal.isProcessing ? 'Đang gửi lệnh...' : confirmModal.actionLabel }}</span>
-          </button>
-        </div>
+    <AppModal v-if="confirmModal.show" :title="confirmModal.title" size="md" :busy="confirmModal.isProcessing"
+      @close="closeConfirmModal">
+      <p class="text-sm leading-relaxed text-slate-500">{{ confirmModal.message }}</p>
+      <div
+        class="mt-4 flex items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50/40 p-3 text-sm">
+        <span class="text-slate-500">Tủ tác động</span><span class="font-semibold text-ink">{{ confirmModal.cabName
+          }}</span>
       </div>
-    </div>
+      <template #footer>
+        <button type="button" @click="closeConfirmModal" :disabled="confirmModal.isProcessing"
+          class="modal-cancel">Hủy</button>
+        <button @click="executeModalAction" :disabled="confirmModal.isProcessing"
+          :class="{ 'modal-warning': confirmModal.confirmVariant === 'warning', 'modal-danger': confirmModal.confirmVariant === 'danger' }"
+          class="modal-primary">
+          <svg v-if="confirmModal.isProcessing" class="size-3.5 animate-spin text-white" fill="none"
+            viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+            </path>
+          </svg>
+          <span>{{ confirmModal.isProcessing ? 'Đang gửi lệnh...' : confirmModal.actionLabel }}</span>
+        </button>
+      </template>
+    </AppModal>
 
     <!-- Toast Notification (Replaces native browser alert) -->
     <div v-if="toast.show" :class="{

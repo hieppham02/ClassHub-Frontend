@@ -1,0 +1,14 @@
+<!doctype html><html lang="vi"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kiểm tra modal ClassHub</title></head>
+<body><div id="app"></div><script type="module">
+import { createApp, ref } from '/node_modules/.vite/deps/vue.js'
+import AppModal from '/src/components/shared/AppModal.vue'
+import '/src/style.css'
+createApp({ components: { AppModal }, setup() { return { mode: ref('filter'), open: ref(true), saved: ref(false) } }, template: `
+<main class="p-6"><div class="flex gap-3"><button @click="mode='filter';open=true">Lọc dữ liệu</button><button @click="mode='account';open=true">Tài khoản</button><button @click="mode='confirm';open=true">Xác nhận</button></div><p v-if="saved">Đã nhận sự kiện submit</p></main>
+<AppModal v-if="open" :title="mode === 'filter' ? 'Bộ lọc thống kê' : mode === 'account' ? 'Thêm mới tài khoản' : 'Chuyển sang chế độ bảo trì'" :size="mode === 'account' ? 'lg' : 'sm'" @close="open=false">
+ <div v-if="mode==='filter'" class="space-y-5"><label class="grid gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">Gom nhóm theo<select class="modal-field"><option>Theo phòng học</option></select></label><div class="grid grid-cols-2 gap-4"><label class="grid gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">Từ ngày<input type="date" class="modal-field"></label><label class="grid gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">Đến ngày<input type="date" class="modal-field"></label></div></div>
+ <form v-else-if="mode==='account'" id="preview-form" class="space-y-4" @submit.prevent="saved=true;open=false"><div v-for="row in 4" :key="row" class="grid grid-cols-1 gap-4 sm:grid-cols-2"><div><label class="modal-label">Mã tài khoản</label><input class="modal-field" required placeholder="Mã sinh viên / giảng viên"></div><div><label class="modal-label">Họ và tên</label><input class="modal-field" required placeholder="Nhập họ và tên"></div></div></form>
+ <p v-else class="text-sm leading-relaxed text-slate-500">Sinh viên/giảng viên sẽ không thể đăng ký mượn tủ này.</p>
+ <template #footer><button class="modal-cancel" @click="open=false">Hủy</button><button v-if="mode==='account'" type="submit" form="preview-form" class="modal-primary">Tạo tài khoản</button><button v-else class="modal-primary" :class="{'modal-danger':mode==='confirm'}" @click="open=false">{{ mode==='filter' ? 'Áp dụng' : 'Bật bảo trì' }}</button></template>
+</AppModal>` }).mount('#app')
+</script></body></html>

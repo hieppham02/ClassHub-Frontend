@@ -1,5 +1,7 @@
 <script setup>
 import AdminLayout from '@/components/admin/layout/AdminLayout.vue'
+import AdminPageTitle from '@/components/admin/layout/AdminPageTitle.vue'
+import OperationsPanel from '@/components/shared/OperationsPanel.vue'
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import VueApexCharts from 'vue3-apexcharts'
 import { api } from '@/services/apiClient.js'
@@ -182,10 +184,7 @@ const donutSeries = computed(() => {
       <!-- Header -->
       <div class="sticky top-0 z-40 bg-mist/95 backdrop-blur-sm border-b border-slate-200/60 shadow-sm px-4 sm:px-6 lg:px-8 xl:px-12 pt-6 pb-4">
         <div class="flex items-center justify-between">
-          <div>
-            <p class="text-[11px] font-bold uppercase tracking-widest text-slate-400">Class Hub Admin</p>
-            <h1 class="mt-0.5 text-2xl font-black text-slate-800">Tổng quan hệ thống</h1>
-          </div>
+          <AdminPageTitle eyebrow="Class Hub Admin" title="Tổng quan hệ thống" />
           <button 
             @click="fetchDashboardData(true)" 
             :disabled="isLoading"
@@ -204,6 +203,8 @@ const donutSeries = computed(() => {
       <!-- Nội dung chính -->
       <div class="px-4 sm:px-6 lg:px-8 xl:px-12 pt-5 pb-10">
         
+        <OperationsPanel admin />
+
         <!-- Filter thời gian -->
         <div class="flex justify-end mb-4">
           <div class="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 shadow-sm">

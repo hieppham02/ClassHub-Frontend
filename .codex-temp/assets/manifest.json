@@ -1,0 +1,1 @@
+["Controllers/AssetsController.cs", "Controllers/BookingController.cs", "Controllers/OperationsController.cs", "Controllers/RoomsController.cs", "Data/AppDbContext.cs", "Models/AssetRequests.cs", "Models/ThietBi.cs", "Models/EquipmentCatalog.cs", "Controllers/EquipmentCatalogController.cs"]

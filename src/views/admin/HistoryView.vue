@@ -1,5 +1,6 @@
 <script setup>
 import AdminLayout from '@/components/admin/layout/AdminLayout.vue'
+import AdminPageTitle from '@/components/admin/layout/AdminPageTitle.vue'
 import { ref, computed, onMounted, watch } from 'vue'
 import { api } from '@/services/apiClient.js'
 
@@ -125,13 +126,10 @@ function exportCSV() {
     <div class="w-full">
       <!-- Header NEO CỐ ĐỊNH -->
       <div class="sticky top-0 z-40 bg-mist/95 backdrop-blur-sm border-b border-slate-200/60 shadow-sm px-4 sm:px-6 lg:px-8 xl:px-12 pt-6 pb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p class="text-xs font-bold uppercase tracking-widest text-slate-400">Kiểm toán &amp; Thống kê</p>
-          <h1 class="mt-0.5 text-2xl font-black text-ink">Lịch sử mượn trả thiết bị</h1>
-        </div>
+        <AdminPageTitle eyebrow="Kiểm toán &amp; Thống kê" title="Lịch sử mượn trả thiết bị" />
         <div class="flex items-center gap-3">
           <button 
-            @click="fetchHistory" 
+            @click="fetchHistory()"
             :disabled="isLoading"
             class="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 h-10 text-xs font-bold text-slate-600 hover:bg-slate-50 transition shadow-sm disabled:opacity-60 active:scale-[0.98]"
           >

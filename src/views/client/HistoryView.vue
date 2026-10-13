@@ -78,6 +78,8 @@ onMounted(() => {
             <div>
               <span v-if="item.status === 'COMPLETED'" class="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-600">ĐÃ TRẢ</span>
               <span v-else-if="item.status === 'CANCELED'" class="rounded-full bg-red-50 px-3 py-1 text-[11px] font-bold text-red-600">ĐÃ HỦY</span>
+              <span v-else-if="item.status === 'RETURNING'" class="rounded-full bg-amber-50 px-3 py-1 text-[11px] font-bold text-amber-700">CHỜ KIỂM TRA TRẢ</span>
+              <span v-else-if="item.status === 'PENDING'" class="rounded-full bg-blue-50 px-3 py-1 text-[11px] font-bold text-brand">CHỜ NHẬN</span>
               <span v-else class="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-bold text-emerald-600">ĐANG MƯỢN</span>
             </div>
           </div>

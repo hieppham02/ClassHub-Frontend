@@ -1,7 +1,9 @@
 <script setup>
+import AppModal from '@/components/shared/AppModal.vue'
 import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue'
 import Navbar from '@/components/shared/Navbar.vue'
 import BottomNav from '@/components/shared/BottomNav.vue'
+import OperationsPanel from '@/components/shared/OperationsPanel.vue'
 import { api } from '@/services/apiClient.js'
 import { cabinetHub } from '@/services/cabinetHub.js'
 
@@ -14,11 +16,51 @@ const booked = ref([])
 
 const date = ref(new Date().toLocaleDateString('en-CA'))
 const slot = ref('Chọn ca học')
-const danhSachCaHoc = ['Ca 1 (07:00 - 09:30)', 'Ca 2 (09:40 - 12:10)', 'Ca 3 (13:00 - 15:30)', 'Ca 4 (15:40 - 18:10)', 'Ca 5 (18:10 - 20:40)']
+const slots = ref([])
+const danhSachCaHoc = computed(() => slots.value.map(ca => `${ca.name} (${ca.start} - ${ca.end})`))
+const selectedSlotId = computed(() => slots.value[danhSachCaHoc.value.indexOf(slot.value)]?.id)
+const returnCondition = ref('BINH_THUONG')
+const returnNote = ref('')
+const returning = ref(false)
+let sessionTimer
+async function fetchSlots() {
+  try { slots.value = await api.get('/operations/slots') }
+  catch (err) { triggerError(err.message || 'Không tải được ca học.') }
+}
 const selectedBuilding = ref('Tất cả tòa')
 const selectedFloor = ref('Tất cả tầng')
 
 const selectedCabinet = ref(null)
+const showDamageReport = ref(false)
+const damageLocationId = ref('')
+const damageBuilding = ref('')
+const damageFloor = ref('')
+const damageBuildings = computed(() => [...new Set(rooms.value.map(r => r.building))])
+const damageFloors = computed(() => [...new Set(rooms.value.filter(r => !damageBuilding.value || r.building === damageBuilding.value).map(r => r.floor))].sort((a, b) => a.localeCompare(b, 'vi', { numeric: true })))
+const damageLocations = computed(() => rooms.value.filter(r => (!damageBuilding.value || r.building === damageBuilding.value) && (!damageFloor.value || r.floor === damageFloor.value)))
+watch(damageBuilding, () => { damageFloor.value = ''; damageLocationId.value = '' })
+watch(damageFloor, () => { damageLocationId.value = '' })
+const damageEquipment = ref('')
+const damageDescription = ref('')
+const sendingDamage = ref(false)
+function openDamageReport() {
+  showDamageReport.value = true
+  damageLocationId.value = ''
+  damageBuilding.value = selectedBuilding.value === 'Tất cả tòa' ? '' : selectedBuilding.value
+  damageFloor.value = ''
+  damageEquipment.value = ''; damageDescription.value = ''
+}
+async function sendDamageReport() {
+  if (sendingDamage.value) return
+  sendingDamage.value = true
+  try {
+    await api.post('/damage-reports', { roomId: damageLocationId.value, equipmentName: damageEquipment.value.trim(), description: damageDescription.value.trim() })
+    showDamageReport.value = false
+    showSuccessToast('Đã gửi báo cáo hỏng hóc cho quản trị viên.')
+  } catch (err) { triggerError(err.message || 'Không gửi được báo cáo.') }
+  finally { sendingDamage.value = false }
+}
+
 const otpValue = ref('')
 const delegateId = ref('')
 const confirmReturnId = ref(null)
@@ -61,13 +103,7 @@ async function fetchRooms() {
     if (Array.isArray(response)) {
       rooms.value = response
       rooms.value.forEach(r => {
-        if (!r.equipment) {
-          r.equipment = [
-            { name: 'Máy chiếu', image: 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=300&auto=format&fit=crop&q=60' },
-            { name: 'Micro không dây', image: 'https://images.unsplash.com/photo-1590602847861-f357a9332bbc?w=300&auto=format&fit=crop&q=60' },
-            { name: 'Bút laser', image: '' }
-          ]
-        }
+        if (!r.equipment) r.equipment = []
         if (!r.floor) r.floor = 'Tầng 1'
         if (!r.building) r.building = 'Tòa EAUT'
       })
@@ -84,7 +120,7 @@ async function fetchActiveSession() {
     const response = await api.get('/history/get-history')
     if (Array.isArray(response)) {
       const history = response
-      const current = history.find(item => item.status === 'PENDING' || item.status === 'ACTIVE' || item.status === 'IN_USE')
+      const current = history.find(item => item.status === 'PENDING' || item.status === 'ACTIVE' || item.status === 'IN_USE' || item.status === 'RETURNING')
       activeBooking.value = current || null
     }
   } catch (err) { 
@@ -100,7 +136,7 @@ async function fetchBookedRooms() {
 
   const [year, month, day] = date.value.split('-')
   const formattedDate = `${day}-${month}-${year}`
-  const caSo = parseInt(slot.value.match(/\d+/)[0])
+  const caSo = selectedSlotId.value
 
   try {
     const response = await api.get(`/booking/get-booked-rooms?date=${formattedDate}&slot=${caSo}`)
@@ -139,6 +175,11 @@ const groupedByBuildingAndFloor = computed(() => {
     if (!groups[building]) groups[building] = {}
     if (!groups[building][floor]) groups[building][floor] = []
     groups[building][floor].push(room)
+  })
+  Object.values(groups).forEach(floors => {
+    Object.values(floors).forEach(cabinets => {
+      cabinets.sort((a, b) => Number(b.locationType === 'CORRIDOR') - Number(a.locationType === 'CORRIDOR'))
+    })
   })
   return groups
 })
@@ -208,17 +249,16 @@ async function scrollToMyCabinet() {
 async function book(room) {
   if (slot.value === 'Chọn ca học') { showMissingSlotModal.value = true; return }
   const [year, month, day] = date.value.split('-')
-  const caSo = parseInt(slot.value.match(/\d+/)[0])
+  const caSo = selectedSlotId.value
 
   try {
     await api.post('/booking/dat-phong', {
       maPhong: room.id,
       ngayMuon: `${day}-${month}-${year}`,
-      caMuon: caSo,
-      vaitro: user.value.role === 'Sinh viên' ? 'SINHVIEN' : 'GIANGVIEN'
+      caMuon: caSo
     })
 
-    showSuccessToast('Đăng ký phòng thành công!')
+    showSuccessToast(room.locationType === 'CORRIDOR' ? 'Đăng ký mượn tủ hành lang thành công!' : 'Đăng ký phòng thành công!')
     selectedCabinet.value = null
     await fetchActiveSession()
     await fetchBookedRooms()
@@ -228,6 +268,7 @@ async function book(room) {
 }
 
 async function openDoor() {
+  if (activeBooking.value?.status === 'RETURNING') return triggerError('Phiếu đang chờ kiểm tra trả; không thể mở tủ bằng OTP.')
   if (!otpValue.value) return triggerError('Vui lòng nhập OTP!')
   try {
     await api.post(`/cabinet/open-door/${activeBooking.value.id}`, {
@@ -242,6 +283,7 @@ async function openDoor() {
 }
 
 async function resendOtp() {
+  if (activeBooking.value?.status === 'RETURNING') return triggerError('Phiếu đang chờ kiểm tra trả; không cấp lại OTP.')
   try {
     await api.post(`/history/refresh-otp/${activeBooking.value.id}`)
     showSuccessToast('Đã cấp lại mã OTP mới!')
@@ -252,21 +294,27 @@ async function resendOtp() {
 }
 
 async function returnRoom() {
+  if (returning.value || !activeBooking.value) return
+  if (!['ACTIVE', 'IN_USE', 'RETURNING'].includes(activeBooking.value.status)) return triggerError('Chỉ trả phiên đã nhận thiết bị.')
+  returning.value = true
   try {
+    if (activeBooking.value.status !== 'RETURNING') {
+      await api.put(`/operations/sessions/${activeBooking.value.id}/return-report`, { condition: returnCondition.value, note: returnNote.value })
+    }
     await api.put(`/booking/return-room/${activeBooking.value.id}?room=${activeBooking.value.room}`)
-    showSuccessToast('Hoàn tất trả thiết bị thành công!')
+    showSuccessToast('Đã yêu cầu khóa tủ. Phiếu chờ quản trị viên kiểm tra trả.')
     confirmReturnId.value = null
     selectedCabinet.value = null
-    activeBooking.value = null
     otpValue.value = ''
     await fetchBookedRooms()
     await fetchActiveSession()
   } catch (err) { 
     triggerError(err.message || 'Lỗi kết nối')
-  }
+  } finally { returning.value = false }
 }
 
 async function delegateAccess() {
+  if (activeBooking.value?.status === 'RETURNING') return triggerError('Phiếu đang chờ kiểm tra trả; không thể ủy quyền.')
   if (delegateId.value.length !== 8) return triggerError('Mã Sinh viên phải đúng 8 chữ số!')
   try {
     const data = await api.post(`/history/delegate/${activeBooking.value.id}`, {
@@ -301,9 +349,12 @@ onMounted(async () => {
   }
   if (!token || !saved) return logout()
 
+  await fetchSlots()
   await fetchRooms()
   await fetchActiveSession()
   await fetchBookedRooms()
+
+  sessionTimer = setInterval(fetchActiveSession, 30000)
 
   // Cập nhật vi phân tại chỗ trên RAM (Delta Update)
   unsubscribeCabinetStatus = cabinetHub.subscribe('CabinetStatusChanged', (data) => {
@@ -331,6 +382,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  clearInterval(sessionTimer)
   if (unsubscribeCabinetStatus) unsubscribeCabinetStatus()
 })
 </script>
@@ -355,45 +407,38 @@ onUnmounted(() => {
     Tủ hiện tại ({{ activeBooking.room }})
   </button>
 
-  <div v-if="showMissingSlotModal"
-    class="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/40 p-5 backdrop-blur-sm"
-    @click.self="showMissingSlotModal = false">
-    <div class="w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl">
-      <h2 class="text-xl font-bold text-slate-800">Vui lòng chọn ca học trước khi đăng ký</h2>
-      <button @click="showMissingSlotModal = false"
-        class="mt-6 h-11 w-full rounded-xl bg-blue-600 font-bold text-white transition hover:bg-blue-700">Đã hiểu</button>
-    </div>
-  </div>
+  <AppModal v-if="showMissingSlotModal" title="Chọn ca học" @close="showMissingSlotModal = false">
+    <p class="text-sm leading-relaxed text-slate-500">Vui lòng chọn ca học trước khi đăng ký mượn thiết bị.</p>
+    <template #footer><button type="button" @click="showMissingSlotModal = false" class="modal-primary">Đã hiểu</button></template>
+  </AppModal>
 
-  <div v-if="confirmReturnId"
-    class="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/40 p-5 backdrop-blur-sm"
-    @click.self="confirmReturnId = null">
-    <div class="w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl">
-      <h2 class="text-xl font-bold text-slate-800">Xác nhận hoàn tất trả thiết bị</h2>
-      <p class="mt-2 text-xs text-slate-500">Hãy đảm bảo bạn đã cất đầy đủ chìa khóa, micro và đóng chặt cửa tủ.</p>
-      <div class="mt-6 flex gap-3">
-        <button @click="confirmReturnId = null"
-          class="h-11 flex-1 rounded-xl border border-blue-100 font-semibold text-slate-500 hover:bg-slate-50">Hủy</button>
-        <button @click="returnRoom" class="h-11 flex-1 rounded-xl bg-blue-600 font-bold text-white hover:bg-blue-700">Xác nhận trả</button>
+  <AppModal v-if="confirmReturnId" title="Gửi yêu cầu trả thiết bị" :busy="returning" @close="confirmReturnId = null">
+    <div class="space-y-4">
+      <p class="text-sm leading-relaxed text-slate-500">Hãy đảm bảo bạn đã cất đầy đủ chìa khóa, micro và đóng chặt cửa tủ.</p>
+      <div>
+        <label class="modal-label" for="return-condition">Tình trạng trả</label>
+        <select id="return-condition" v-model="returnCondition" class="modal-field">
+          <option value="BINH_THUONG">Bình thường</option><option value="HONG_HOC">Có hỏng hóc</option><option value="MAT_DO">Thiếu thiết bị</option>
+        </select>
+      </div>
+      <div>
+        <label class="modal-label" for="return-note">Ghi chú</label>
+        <textarea id="return-note" v-model="returnNote" maxlength="2000" placeholder="Mô tả thiết bị hỏng/thiếu" class="modal-field" />
       </div>
     </div>
-  </div>
+    <template #footer>
+      <button type="button" :disabled="returning" @click="confirmReturnId = null" class="modal-cancel">Hủy</button>
+      <button type="button" :disabled="returning" @click="returnRoom" class="modal-primary">Xác nhận trả</button>
+    </template>
+  </AppModal>
 
-  <div v-if="previewEquipment"
-    class="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
-    @click.self="previewEquipment = null">
-    <div class="w-full max-w-md rounded-3xl bg-white p-6 text-center shadow-2xl">
-      <h3 class="text-lg font-bold text-slate-800 mb-4">{{ previewEquipment.name }}</h3>
-      <div
-        class="overflow-hidden rounded-2xl border border-slate-100 bg-slate-50 flex items-center justify-center min-h-[200px]">
-        <img v-if="previewEquipment.image" :src="previewEquipment.image" :alt="previewEquipment.name"
-          class="max-h-[300px] w-auto object-contain" />
-        <div v-else class="text-slate-400 py-10 font-medium">Chưa có hình ảnh thực tế cho thiết bị này.</div>
-      </div>
-      <button @click="previewEquipment = null"
-        class="mt-6 h-11 w-full rounded-xl bg-blue-600 font-bold text-white hover:bg-blue-700">Đóng</button>
+  <AppModal v-if="previewEquipment" :title="previewEquipment.name" size="md" layer="nested" @close="previewEquipment = null">
+    <div class="flex min-h-[200px] items-center justify-center overflow-hidden rounded-xl border border-blue-100 bg-blue-50/30">
+      <img v-if="previewEquipment.image" :src="previewEquipment.image" :alt="previewEquipment.name" class="max-h-[300px] max-w-full object-contain" />
+      <p v-else class="px-4 py-10 text-center text-sm text-slate-500">Chưa có hình ảnh thực tế cho thiết bị này.</p>
     </div>
-  </div>
+    <template #footer><button type="button" @click="previewEquipment = null" class="modal-cancel">Đóng</button></template>
+  </AppModal>
 
   <main class="min-h-screen bg-slate-50 pb-20 sm:pb-0">
     <Navbar :user="user" :currentPath="currentPath" @logout="logout" />
@@ -467,6 +512,7 @@ onUnmounted(() => {
             <span class="size-2.5 rounded-full bg-red-500"></span>
             <span>Bảo trì / Mất kết nối</span>
           </div>
+          <button type="button" @click="openDamageReport" class="ml-auto inline-flex h-9 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-semibold text-red-700 transition hover:bg-red-100">Báo hỏng hóc</button>
         </div>
 
         <!-- Skeleton Loading State khi tải danh sách tủ -->
@@ -527,7 +573,8 @@ onUnmounted(() => {
                   <div class="w-full bg-white/70 backdrop-blur-xs rounded-lg text-center text-xs font-black text-slate-800 py-1.5 shadow-xs truncate px-1.5">
                     {{ cab.name }}
                   </div>
-                  <div class="flex flex-col gap-1 w-full px-2 sm:px-3 opacity-30">
+                  <div v-if="cab.locationType === 'CORRIDOR'" class="corridor-doors" aria-hidden="true"><span></span><span></span></div>
+                  <div v-else class="flex flex-col gap-1 w-full px-2 sm:px-3 opacity-30">
                     <div class="h-1 w-full bg-black rounded-full"></div>
                     <div class="h-1 w-full bg-black rounded-full"></div>
                     <div class="h-1 w-full bg-black rounded-full"></div>
@@ -553,23 +600,47 @@ onUnmounted(() => {
       </section>
     </div>
 
-    <div v-if="selectedCabinet"
-      class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 p-4 sm:p-5 backdrop-blur-sm"
-      @click.self="selectedCabinet = null; otpValue = ''">
-      <div class="w-full max-w-lg rounded-3xl bg-white shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
-
-        <div class="bg-blue-600 p-5 text-white flex justify-between items-center shrink-0">
-          <div>
-            <p class="text-xs uppercase tracking-widest text-blue-200">Chi tiết & Thao tác</p>
-            <h2 class="text-xl sm:text-2xl font-bold mt-1">Tủ thiết bị {{ selectedCabinet.name }}</h2>
-          </div>
-          <span v-if="activeBooking && (activeBooking.room === selectedCabinet.id || activeBooking.roomId === selectedCabinet.id) && activeBooking.isCabinetOpen"
-            class="animate-pulse rounded-full bg-amber-300 px-3 py-1 text-xs font-bold text-amber-900">TỦ ĐANG MỞ</span>
+    <AppModal v-if="showDamageReport" title="Báo cáo hỏng hóc" layer="nested" :busy="sendingDamage" @close="showDamageReport = false">
+      <form id="damage-report-form" @submit.prevent="sendDamageReport" class="space-y-4">
+        <div class="grid grid-cols-2 gap-3">
+          <label class="block text-sm font-semibold">Tòa
+            <select v-model="damageBuilding" class="modal-field mt-2 w-full">
+              <option value="">Tất cả tòa</option>
+              <option v-for="name in damageBuildings" :key="name" :value="name">{{ name }}</option>
+            </select>
+          </label>
+          <label class="block text-sm font-semibold">Tầng
+            <select v-model="damageFloor" class="modal-field mt-2 w-full">
+              <option value="">Tất cả tầng</option>
+              <option v-for="name in damageFloors" :key="name" :value="name">{{ name }}</option>
+            </select>
+          </label>
         </div>
-
-        <div class="p-5 sm:p-6 overflow-y-auto flex-1">
-          <p class="mb-3 text-sm font-bold uppercase tracking-wide text-slate-400">Thiết bị có trong tủ (Bấm để xem ảnh)</p>
-          <div class="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <label class="block text-sm font-semibold">Phòng / tủ cần báo hỏng
+          <select v-model="damageLocationId" required class="modal-field mt-2 w-full">
+            <option disabled value="">Chọn phòng hoặc tủ hành lang</option>
+            <option v-for="location in damageLocations" :key="location.id" :value="location.id">{{ location.name }} · {{ location.floor }} · {{ location.building }}</option>
+          </select>
+        </label>
+        <p v-if="!damageLocations.length" class="text-xs text-slate-500">Không có phòng/tủ phù hợp với tòa và tầng đã chọn.</p>
+        <label class="block text-sm font-semibold">Thiết bị hỏng<input v-model="damageEquipment" required maxlength="100" class="modal-field mt-2 w-full" placeholder="Ví dụ: ổ điện, máy chiếu..." /></label>
+        <label class="block text-sm font-semibold">Mô tả hỏng hóc<textarea v-model="damageDescription" required minlength="10" maxlength="2000" rows="5" class="modal-field mt-2 w-full" placeholder="Mô tả hiện tượng và vị trí thiết bị..." /></label>
+        <p class="text-xs text-slate-500">Báo cáo sẽ được gửi cho quản trị viên để kiểm tra và xử lý.</p>
+      </form>
+      <template #footer><button class="modal-cancel" :disabled="sendingDamage" @click="showDamageReport = false">Hủy</button><button form="damage-report-form" type="submit" class="modal-primary" :disabled="sendingDamage">{{ sendingDamage ? 'Đang gửi...' : 'Gửi báo cáo' }}</button></template>
+    </AppModal>
+    <AppModal v-if="selectedCabinet" :title="selectedCabinet.locationType === 'CORRIDOR' ? selectedCabinet.name : 'Tủ thiết bị ' + selectedCabinet.name" size="lg" layer="cabinet" @close="selectedCabinet = null; otpValue = ''">
+      <template #subtitle>
+        <span v-if="activeBooking && (activeBooking.room === selectedCabinet.id || activeBooking.roomId === selectedCabinet.id) && activeBooking.isCabinetOpen" class="mt-2 inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">Tủ đang mở</span>
+      </template>
+      
+          <p v-if="activeBooking?.status === 'RETURNING' && activeBooking.room === selectedCabinet.id" class="mb-4 rounded-xl bg-amber-50 p-3 text-sm">Phiếu đang chờ kiểm tra trả. Nếu gửi lệnh khóa thất bại, có thể gửi lại yêu cầu trả.</p>
+          <ul v-if="selectedCabinet.equipmentDetails?.length" class="mb-4 space-y-2 text-sm">
+            <li v-for="item in selectedCabinet.equipmentDetails" :key="item.id">{{ item.name }} × {{ item.quantity }} · {{ { TOT: 'Tốt', HONG: 'Hỏng', DANG_BAO_TRI: 'Đang bảo trì' }[item.condition] || item.condition }}<p v-if="item.note" class="text-xs text-slate-500">{{ item.note }}</p></li>
+          </ul>
+          <p class="mb-3 text-sm font-bold uppercase tracking-wide text-slate-400">{{ selectedCabinet.locationType === 'CORRIDOR' ? 'Đồ dùng chung · Hành lang' : 'Danh mục thiết bị của phòng' }}</p>
+          <p v-if="selectedCabinet.locationType === 'CORRIDOR'" class="mb-4 text-sm text-slate-500">Ổ điện, cáp mạng LAN, phấn viết bảng. Quy trình mượn và trả giống tủ phòng học.</p>
+          <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 sm:grid-cols-3">
             <div v-for="item in selectedCabinet.equipment" :key="typeof item === 'object' ? item.name : item"
               @click="previewEquipment = typeof item === 'object' ? item : { name: item, image: '' }"
               class="flex flex-col items-center gap-2 rounded-xl border border-blue-100 bg-slate-50 p-3 text-center cursor-pointer transition hover:border-blue-500 hover:bg-blue-50/50">
@@ -588,7 +659,7 @@ onUnmounted(() => {
               <p class="mb-3 text-sm font-bold uppercase tracking-wide text-slate-400">Thao tác mở khóa</p>
               <div class="mb-6 flex flex-col sm:flex-row gap-2">
                 <input v-model="otpValue" type="text" placeholder="Nhập mã OTP..." maxlength="6"
-                  class="h-12 w-full sm:flex-1 rounded-xl border border-blue-200 bg-slate-50 px-4 text-center text-lg font-bold tracking-widest text-slate-800 outline-none focus:border-blue-500 focus:ring-2" />
+                  class="modal-field" />
                 <div class="flex gap-2 w-full sm:w-auto">
                   <button @click="resendOtp"
                     class="h-12 w-14 sm:w-12 shrink-0 rounded-xl border border-blue-200 text-slate-500 hover:bg-blue-50 flex items-center justify-center"
@@ -599,13 +670,13 @@ onUnmounted(() => {
                     </svg>
                   </button>
                   <button @click="openDoor"
-                    class="h-12 flex-1 sm:flex-none shrink-0 rounded-xl bg-slate-900 px-6 font-bold text-white transition hover:bg-slate-800">
+                    class="modal-primary">
                     Mở Khóa
                   </button>
                 </div>
               </div>
               <button @click="confirmReturnId = activeBooking.id"
-                class="h-12 w-full rounded-xl border-2 border-blue-600 font-bold text-blue-600 hover:bg-blue-600 hover:text-white transition">
+                class="modal-cancel w-full">
                 Cất đồ &amp; Hoàn tất trả
               </button>
             </div>
@@ -621,15 +692,21 @@ onUnmounted(() => {
                 <span>Đăng ký cho <b>{{ date }}</b> lúc <b>{{ slot }}</b></span>
               </div>
               <button @click="book(selectedCabinet)"
-                class="h-12 w-full rounded-xl bg-blue-600 text-sm font-bold text-white transition hover:bg-blue-700 shadow-md">
+                class="modal-primary w-full">
                 Đăng ký mượn ngay
               </button>
             </div>
           </template>
-        </div>
-      </div>
-    </div>
+      <template #footer><button type="button" @click="selectedCabinet = null; otpValue = ''" class="modal-cancel">Đóng</button></template>
+    </AppModal>
 
+    <div class="mx-auto max-w-7xl px-4"><OperationsPanel /></div>
     <BottomNav :currentPath="currentPath" :is-admin="user.role === 'ADMIN'" />
   </main>
 </template>
+
+<style scoped>
+.corridor-doors { display: flex; gap: 4px; width: 88%; height: 38px; }
+.corridor-doors span { flex: 1; border: 2px solid #ffffff90; border-radius: 6px; position: relative; }
+.corridor-doors span::after { content: ''; position: absolute; right: 5px; top: 30%; height: 14px; width: 3px; background: white; border-radius: 4px; }
+</style>

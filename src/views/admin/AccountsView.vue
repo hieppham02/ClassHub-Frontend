@@ -1,5 +1,9 @@
 <script setup>
+import AppModal from '@/components/shared/AppModal.vue'
 import AdminLayout from '@/components/admin/layout/AdminLayout.vue'
+import AdminPageTitle from '@/components/admin/layout/AdminPageTitle.vue'
+import TablePagination from '@/components/shared/TablePagination.vue'
+import { usePagination } from '@/composables/usePagination.js'
 import { ref, computed, reactive, onMounted } from 'vue'
 import { api } from '@/services/apiClient.js'
 
@@ -56,6 +60,8 @@ const filteredAccounts = computed(() => {
     return matchRole && matchStatus && matchSearch
   })
 })
+
+const { page, pageItems: pagedAccounts, totalItems } = usePagination(filteredAccounts, [search, roleFilter, statusFilter])
 
 function openAddModal() {
   isEditing.value = false
@@ -149,10 +155,7 @@ async function deleteAccount(acc) {
       <!-- Header NEO CỐ ĐỊNH -->
       <div
         class="sticky top-0 z-40 bg-mist/95 backdrop-blur-sm border-b border-slate-200/60 shadow-sm px-4 sm:px-6 lg:px-8 xl:px-12 pt-6 pb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p class="text-xs font-bold uppercase tracking-widest text-slate-400">Quản lý người dùng</p>
-          <h1 class="mt-0.5 text-2xl font-black text-ink">Tài khoản hệ thống</h1>
-        </div>
+        <AdminPageTitle eyebrow="Quản lý người dùng" title="Tài khoản hệ thống" />
         <div class="flex items-center gap-3">
           <button @click="fetchAccounts" :disabled="isLoading"
             class="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 h-10 text-xs font-bold text-slate-600 hover:bg-slate-50 transition shadow-sm disabled:opacity-60 active:scale-[0.98]">
@@ -223,7 +226,7 @@ async function deleteAccount(acc) {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="acc in filteredAccounts" :key="acc.id"
+                <tr v-for="acc in pagedAccounts" :key="acc.id"
                   class="border-b border-blue-50 transition hover:bg-blue-50/30">
                   <td class="px-5 py-4 font-bold text-slate-800 whitespace-nowrap">{{ acc.id }}</td>
                   <td class="px-5 py-4 font-semibold text-ink whitespace-nowrap">{{ acc.name }}</td>
@@ -276,32 +279,25 @@ async function deleteAccount(acc) {
               </tbody>
             </table>
           </div>
+          <TablePagination v-model:page="page" :total-items="totalItems" :disabled="isLoading" label="tài khoản" />
         </div>
 
       </div>
 
       <!-- MODAL THÊM / SỬA TÀI KHOẢN -->
-      <div v-if="showModal"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-        <div class="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
-          <div class="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
-            <h3 class="text-lg font-bold text-ink">
-              {{ isEditing ? 'Chỉnh sửa tài khoản' : 'Thêm mới tài khoản' }}
-            </h3>
-            <button @click="closeModal" class="text-slate-400 hover:text-slate-600 font-bold text-xl">✕</button>
-          </div>
+      <AppModal v-if="showModal" :title="isEditing ? 'Chỉnh sửa tài khoản' : 'Thêm mới tài khoản'" size="lg" @close="closeModal">
+          <form id="modal-editor" class="space-y-4" @submit.prevent="saveAccount">
 
-          <form class="space-y-3.5" @submit.prevent="saveAccount">
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Mã SV/User</label>
+                <label class="modal-label">Mã SV/User</label>
                 <input v-model="accountForm.id" :disabled="isEditing" type="text" required placeholder="VD: 20231206"
-                  class="h-10 w-full rounded-xl border border-blue-100 bg-mist px-3 text-sm outline-none focus:ring-2 focus:ring-brand disabled:opacity-60" />
+                  class="modal-field" />
               </div>
               <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Vai trò</label>
+                <label class="modal-label">Vai trò</label>
                 <select v-model="accountForm.role"
-                  class="h-10 w-full rounded-xl border border-blue-100 bg-mist px-3 text-sm outline-none focus:ring-2 focus:ring-brand">
+                  class="modal-field">
                   <option>Sinh viên</option>
                   <option>Giảng viên</option>
                   <option>Admin</option>
@@ -310,53 +306,45 @@ async function deleteAccount(acc) {
             </div>
 
             <div>
-              <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Họ và tên</label>
+              <label class="modal-label">Họ và tên</label>
               <input v-model="accountForm.name" type="text" required placeholder="VD: Phạm Hoàng Hiệp"
-                class="h-10 w-full rounded-xl border border-blue-100 bg-mist px-3 text-sm outline-none focus:ring-2 focus:ring-brand" />
+                class="modal-field" />
             </div>
 
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Email</label>
+                <label class="modal-label">Email</label>
                 <input v-model="accountForm.email" type="email" required placeholder="VD: 20231206@eaut.edu.vn"
-                  class="h-10 w-full rounded-xl border border-blue-100 bg-mist px-3 text-sm outline-none focus:ring-2 focus:ring-brand" />
+                  class="modal-field" />
               </div>
               <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Số điện thoại</label>
+                <label class="modal-label">Số điện thoại</label>
                 <input v-model="accountForm.phone" type="text" placeholder="VD: 0969299262"
-                  class="h-10 w-full rounded-xl border border-blue-100 bg-mist px-3 text-sm outline-none focus:ring-2 focus:ring-brand" />
+                  class="modal-field" />
               </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Lớp / Đơn vị</label>
+                <label class="modal-label">Lớp / Đơn vị</label>
                 <input v-model="accountForm.classOrDept" type="text" placeholder="VD: DCCNTT.14.3"
-                  class="h-10 w-full rounded-xl border border-blue-100 bg-mist px-3 text-sm outline-none focus:ring-2 focus:ring-brand" />
+                  class="modal-field" />
               </div>
               <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">
+                <label class="modal-label">
                   {{ isEditing ? 'Mật khẩu mới (Tùy chọn)' : 'Mật khẩu khởi tạo' }}
                 </label>
                 <input v-model="accountForm.password" type="password"
                   :placeholder="isEditing ? 'Để trống nếu giữ nguyên' : 'Mặc định: 123456'"
-                  class="h-10 w-full rounded-xl border border-blue-100 bg-mist px-3 text-sm outline-none focus:ring-2 focus:ring-brand" />
+                  class="modal-field" />
               </div>
             </div>
-
-            <div class="mt-6 flex justify-end gap-3 pt-3 border-t border-slate-100">
-              <button type="button" @click="closeModal"
-                class="h-10 rounded-xl bg-slate-100 px-4 text-xs font-bold text-slate-600 hover:bg-slate-200 transition">
-                Hủy bỏ
-              </button>
-              <button type="submit"
-                class="h-10 rounded-xl bg-brand px-5 text-xs font-bold text-white shadow-md shadow-brand/20 hover:bg-brand-dark transition">
-                {{ isEditing ? 'Lưu thay đổi' : 'Tạo tài khoản' }}
-              </button>
-            </div>
           </form>
-        </div>
-      </div>
+          <template #footer>
+            <button type="button" @click="closeModal" class="modal-cancel">Hủy</button>
+            <button type="submit" form="modal-editor" class="modal-primary">{{ isEditing ? 'Lưu thay đổi' : 'Tạo tài khoản' }}</button>
+          </template>
+        </AppModal>
 
     </div>
   </AdminLayout>

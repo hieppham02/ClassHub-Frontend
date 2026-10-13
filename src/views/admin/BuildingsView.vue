@@ -1,5 +1,9 @@
 <script setup>
+import AppModal from '@/components/shared/AppModal.vue'
 import AdminLayout from '@/components/admin/layout/AdminLayout.vue'
+import AdminPageTitle from '@/components/admin/layout/AdminPageTitle.vue'
+import TablePagination from '@/components/shared/TablePagination.vue'
+import { usePagination } from '@/composables/usePagination.js'
 import { ref, reactive, onMounted } from 'vue'
 import { api } from '@/services/apiClient.js'
 
@@ -10,6 +14,8 @@ const isEditing = ref(false)
 
 const buildings = ref([])
 const rooms = ref([])
+const { page: buildingPage, pageItems: pagedBuildings, totalItems: buildingTotal } = usePagination(buildings)
+const { page: roomPage, pageItems: pagedRooms, totalItems: roomTotal } = usePagination(rooms)
 
 // Form Tòa nhà
 const buildingForm = reactive({
@@ -163,10 +169,7 @@ async function deleteItem(type, id, name) {
     <div class="w-full">
       <!-- Header NEO CỐ ĐỊNH -->
       <div class="sticky top-0 z-40 bg-mist/95 backdrop-blur-sm border-b border-slate-200/60 shadow-sm px-4 sm:px-6 lg:px-8 xl:px-12 pt-6 pb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p class="text-xs font-bold uppercase tracking-widest text-slate-400">Cơ sở hạ tầng</p>
-          <h1 class="mt-0.5 text-2xl font-black text-ink">Tòa nhà &amp; Phòng học</h1>
-        </div>
+        <AdminPageTitle eyebrow="Cơ sở hạ tầng" title="Tòa nhà &amp; Phòng học" />
         <div class="flex items-center gap-3">
           <button 
             @click="fetchData" 
@@ -221,7 +224,7 @@ async function deleteItem(type, id, name) {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="b in buildings" :key="b.id" class="border-b border-blue-50 transition hover:bg-blue-50/30">
+                <tr v-for="b in pagedBuildings" :key="b.id" class="border-b border-blue-50 transition hover:bg-blue-50/30">
                   <td class="px-5 py-4 font-bold text-slate-800 whitespace-nowrap">{{ b.id }}</td>
                   <td class="px-5 py-4 font-semibold text-ink whitespace-nowrap">{{ b.name }}</td>
                   <td class="px-5 py-4 font-medium text-slate-600 whitespace-nowrap">{{ b.floors }} tầng</td>
@@ -241,6 +244,7 @@ async function deleteItem(type, id, name) {
               </tbody>
             </table>
           </div>
+          <TablePagination v-model:page="buildingPage" :total-items="buildingTotal" :disabled="isLoading" label="tòa nhà" />
         </div>
 
         <!-- ================= TAB 2: PHÒNG HỌC ================= -->
@@ -249,37 +253,23 @@ async function deleteItem(type, id, name) {
             <table class="w-full text-sm">
               <thead>
                 <tr class="border-b border-blue-50 bg-blue-50/60">
-                  <th class="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500 whitespace-nowrap">Mã phòng</th>
                   <th class="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500 whitespace-nowrap">Tên phòng</th>
                   <th class="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500 whitespace-nowrap">Tòa nhà</th>
                   <th class="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500 whitespace-nowrap">Tầng</th>
                   <th class="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500 whitespace-nowrap">Sức chứa</th>
-                  <th class="px-5 py-4 text-center text-xs font-bold uppercase tracking-wide text-slate-500 whitespace-nowrap">Trạng thái</th>
                   <th class="px-5 py-4 text-center text-xs font-bold uppercase tracking-wide text-slate-500 whitespace-nowrap">Thao tác</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="r in rooms" :key="r.id" class="border-b border-blue-50 transition hover:bg-blue-50/30">
-                  <td class="px-5 py-4 font-bold text-slate-800 whitespace-nowrap">{{ r.id }}</td>
+                <tr v-for="r in pagedRooms" :key="r.id" class="border-b border-blue-50 transition hover:bg-blue-50/30">
                   <td class="px-5 py-4 font-semibold text-ink whitespace-nowrap">{{ r.name }}</td>
                   <td class="px-5 py-4 font-medium text-slate-600 whitespace-nowrap">{{ r.building }}</td>
                   <td class="px-5 py-4 font-medium text-slate-600 whitespace-nowrap">{{ r.floor }}</td>
                   <td class="px-5 py-4 text-slate-600 whitespace-nowrap">{{ r.capacity }} chỗ</td>
                   <td class="px-5 py-4 text-center whitespace-nowrap">
-                    <span 
-                      :class="{
-                        'bg-emerald-100 text-emerald-700': r.status === 'Sẵn sàng', 
-                        'bg-amber-100 text-amber-700': r.status === 'Đang mượn', 
-                        'bg-red-100 text-red-700': r.status === 'Bảo trì' || r.status === 'Tạm khóa'
-                      }" 
-                      class="rounded-md px-2.5 py-1 text-xs font-bold"
-                    >
-                      {{ r.status }}
-                    </span>
-                  </td>
-                  <td class="px-5 py-4 text-center whitespace-nowrap">
                     <div class="flex items-center justify-center gap-3">
                       <button @click="openEditRoom(r)" class="font-semibold text-brand hover:text-brand-dark transition">Sửa</button>
+                      <router-link :to="{ path: '/admin/assets', query: { room: r.id, tab: 'assets' } }" class="font-semibold text-brand hover:text-brand-dark transition">Tài sản</router-link>
                       <button @click="deleteItem('r', r.id, r.name)" class="font-semibold text-red-500 hover:text-red-700 transition">Xóa</button>
                     </div>
                   </td>
@@ -287,148 +277,130 @@ async function deleteItem(type, id, name) {
               </tbody>
             </table>
           </div>
+          <TablePagination v-model:page="roomPage" :total-items="roomTotal" :disabled="isLoading" label="phòng học" />
         </div>
 
       </div>
 
       <!-- ================= MODAL THÊM / SỬA ================= -->
-      <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-        <div class="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
-          
-          <!-- Modal Header -->
-          <div class="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
-            <h3 class="text-lg font-bold text-ink">
-              {{ isEditing ? 'Chỉnh sửa' : 'Thêm mới' }} {{ activeTab === 'buildings' ? 'Tòa nhà' : 'Phòng học' }}
-            </h3>
-            <button @click="closeModal" class="text-slate-400 hover:text-slate-600 font-bold text-xl">✕</button>
-          </div>
+      <AppModal v-if="showModal" :title="(isEditing ? 'Chỉnh sửa' : 'Thêm mới') + ' ' + (activeTab === 'buildings' ? 'Tòa nhà' : 'Phòng học')" size="md" @close="closeModal">
+          <form v-if="activeTab === 'buildings'" id="modal-editor" class="space-y-4" @submit.prevent="saveBuilding">
 
-          <!-- FORM TÒA NHÀ -->
-          <form v-if="activeTab === 'buildings'" class="space-y-4" @submit.prevent="saveBuilding">
             <div>
-              <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Mã tòa nhà</label>
+              <label class="modal-label">Mã tòa nhà</label>
               <input 
                 v-model="buildingForm.id" 
                 :disabled="isEditing"
                 type="text" 
                 required 
                 placeholder="VD: DTD, EAUT, PLC"
-                class="h-10 w-full rounded-xl border border-blue-100 bg-mist px-3 text-sm outline-none focus:ring-2 focus:ring-brand disabled:opacity-60 uppercase"
+                class="modal-field"
               />
             </div>
             <div>
-              <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Tên tòa nhà</label>
+              <label class="modal-label">Tên tòa nhà</label>
               <input 
                 v-model="buildingForm.name" 
                 type="text" 
                 required 
                 placeholder="VD: Tòa nhà Đinh Trọng Dật"
-                class="h-10 w-full rounded-xl border border-blue-100 bg-mist px-3 text-sm outline-none focus:ring-2 focus:ring-brand"
+                class="modal-field"
               />
             </div>
             <div>
-              <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Số tầng</label>
+              <label class="modal-label">Số tầng</label>
               <input 
                 v-model.number="buildingForm.floors" 
                 type="number" 
                 min="1" 
                 max="50" 
                 required 
-                class="h-10 w-full rounded-xl border border-blue-100 bg-mist px-3 text-sm outline-none focus:ring-2 focus:ring-brand"
+                class="modal-field"
               />
             </div>
             <div>
-              <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Mô tả / Ghi chú</label>
+              <label class="modal-label">Mô tả / Ghi chú</label>
               <input 
                 v-model="buildingForm.description" 
                 type="text" 
                 placeholder="VD: Khu thực hành CNTT"
-                class="h-10 w-full rounded-xl border border-blue-100 bg-mist px-3 text-sm outline-none focus:ring-2 focus:ring-brand"
+                class="modal-field"
               />
             </div>
-
-            <div class="mt-6 flex justify-end gap-3 pt-3 border-t border-slate-100">
-              <button type="button" @click="closeModal" class="h-10 rounded-xl bg-slate-100 px-4 text-xs font-bold text-slate-600">Hủy</button>
-              <button type="submit" class="h-10 rounded-xl bg-brand px-5 text-xs font-bold text-white shadow-md shadow-brand/20 hover:bg-brand-dark">Lưu</button>
-            </div>
           </form>
+<form v-else id="modal-editor" class="space-y-4" @submit.prevent="saveRoom">
 
-          <!-- FORM PHÒNG HỌC -->
-          <form v-else class="space-y-4" @submit.prevent="saveRoom">
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Mã phòng</label>
+                <label class="modal-label">Mã phòng</label>
                 <input 
                   v-model="roomForm.id" 
                   :disabled="isEditing"
                   type="text" 
                   required 
                   placeholder="VD: DTD201"
-                  class="h-10 w-full rounded-xl border border-blue-100 bg-mist px-3 text-sm outline-none focus:ring-2 focus:ring-brand disabled:opacity-60 uppercase"
+                  class="modal-field"
                 />
               </div>
               <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Tên hiển thị</label>
+                <label class="modal-label">Tên hiển thị</label>
                 <input 
                   v-model="roomForm.name" 
                   type="text" 
                   required 
                   placeholder="VD: DTD-201"
-                  class="h-10 w-full rounded-xl border border-blue-100 bg-mist px-3 text-sm outline-none focus:ring-2 focus:ring-brand"
+                  class="modal-field"
                 />
               </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Thuộc Tòa nhà</label>
-                <select v-model="roomForm.buildingId" required class="h-10 w-full rounded-xl border border-blue-100 bg-mist px-3 text-sm outline-none focus:ring-2 focus:ring-brand">
+                <label class="modal-label">Thuộc Tòa nhà</label>
+                <select v-model="roomForm.buildingId" required class="modal-field">
                   <option v-for="b in buildings" :key="b.id" :value="b.id">{{ b.name }} ({{ b.id }})</option>
                 </select>
               </div>
               <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Tầng số</label>
+                <label class="modal-label">Tầng số</label>
                 <input 
                   v-model.number="roomForm.floor" 
                   type="number" 
                   min="1" 
                   max="30" 
                   required 
-                  class="h-10 w-full rounded-xl border border-blue-100 bg-mist px-3 text-sm outline-none focus:ring-2 focus:ring-brand"
+                  class="modal-field"
                 />
               </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Sức chứa (Chỗ)</label>
+                <label class="modal-label">Sức chứa (Chỗ)</label>
                 <input 
                   v-model.number="roomForm.capacity" 
                   type="number" 
                   min="10" 
                   max="500" 
                   required 
-                  class="h-10 w-full rounded-xl border border-blue-100 bg-mist px-3 text-sm outline-none focus:ring-2 focus:ring-brand"
+                  class="modal-field"
                 />
               </div>
               <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Trạng thái phòng</label>
-                <select v-model="roomForm.status" class="h-10 w-full rounded-xl border border-blue-100 bg-mist px-3 text-sm outline-none focus:ring-2 focus:ring-brand">
+                <label class="modal-label">Trạng thái phòng</label>
+                <select v-model="roomForm.status" class="modal-field">
                   <option value="HOAT_DONG">Sẵn sàng (Hoạt động)</option>
                   <option value="BAO_TRI">Bảo trì</option>
                   <option value="TAM_KHOA">Tạm khóa</option>
                 </select>
               </div>
             </div>
-
-            <div class="mt-6 flex justify-end gap-3 pt-3 border-t border-slate-100">
-              <button type="button" @click="closeModal" class="h-10 rounded-xl bg-slate-100 px-4 text-xs font-bold text-slate-600">Hủy</button>
-              <button type="submit" class="h-10 rounded-xl bg-brand px-5 text-xs font-bold text-white shadow-md shadow-brand/20 hover:bg-brand-dark">Lưu</button>
-            </div>
           </form>
-
-        </div>
-      </div>
+          <template #footer>
+            <button type="button" @click="closeModal" class="modal-cancel">Hủy</button>
+            <button type="submit" form="modal-editor" class="modal-primary">Lưu</button>
+          </template>
+        </AppModal>
 
     </div>
   </AdminLayout>

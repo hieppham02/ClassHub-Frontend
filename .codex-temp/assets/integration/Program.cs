@@ -1,0 +1,173 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Security.Claims;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using ClassHub_API.Controllers;
+using ClassHub_API.Data;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using MySqlConnector;
+
+var testDatabase=Environment.GetEnvironmentVariable("CLASSHUB_ASSET_TEST_DB") ?? throw new Exception("Test database missing.");
+if(!testDatabase.StartsWith("classhub_assets_test_") || !System.Text.RegularExpressions.Regex.IsMatch(testDatabase,"^[a-z0-9_]+$")) throw new Exception("Unsafe test database.");
+var secret=JsonDocument.Parse(File.ReadAllText(@"C:\Users\edoga\AppData\Roaming\Microsoft\UserSecrets\8440d348-7540-4d65-b3c0-00df83ab0560\secrets.json"));
+var connection=secret.RootElement.TryGetProperty("ConnectionStrings:DefaultConnection",out var flat) ? flat.GetString()! : secret.RootElement.GetProperty("ConnectionStrings").GetProperty("DefaultConnection").GetString()!;
+var cs=new MySqlConnectionStringBuilder(connection) { Database=testDatabase };
+var builder=WebApplication.CreateBuilder(args);
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole().SetMinimumLevel(LogLevel.Error);
+builder.Services.AddDbContext<AppDbContext>(o=>o.UseMySql(cs.ConnectionString,ServerVersion.AutoDetect(cs.ConnectionString)));
+builder.Services.AddControllers().AddApplicationPart(typeof(AssetsController).Assembly);
+builder.Services.AddAuthentication("Test").AddScheme<AuthenticationSchemeOptions,TestAuthentication>("Test",_=>{});
+builder.Services.AddAuthorization();
+var app=builder.Build();app.UseAuthentication();app.UseAuthorization();app.MapControllers();
+app.Urls.Add("http://127.0.0.1:5298");await app.StartAsync();
+using var client=new HttpClient { BaseAddress=new Uri("http://127.0.0.1:5298/api/") };
+int passed=0;
+void Check(bool condition,string name) { if(!condition) throw new Exception("FAIL: "+name); passed++; Console.WriteLine("PASS: "+name); }
+async Task<JsonElement> Json(HttpResponseMessage response,int expected=200) {
+    string text=await response.Content.ReadAsStringAsync();
+    if((int)response.StatusCode!=expected) throw new Exception($"Unexpected HTTP {(int)response.StatusCode}, expected {expected}: {text}");
+    return JsonDocument.Parse(text).RootElement.Clone();
+}
+async Task<JsonElement> Overview()=>await Json(await client.GetAsync("admin/assets"));
+async Task<JsonElement> GetItem(int id)=> (await Overview()).GetProperty("equipment").EnumerateArray().First(e=>e.GetProperty("id").GetInt32()==id).Clone();
+async Task<JsonElement[]> Items(string catalog)=> (await Overview()).GetProperty("equipment").EnumerateArray().Where(e=>e.GetProperty("catalogCode").GetString()==catalog).Select(e=>e.Clone()).ToArray();
+int Id(JsonElement e)=>e.GetProperty("id").GetInt32();
+int Version(JsonElement e)=>e.GetProperty("version").GetInt32();
+int Quantity(JsonElement e)=>e.GetProperty("quantity").GetInt32();
+string? Room(JsonElement e)=>e.GetProperty("roomId").GetString();
+string Condition(JsonElement e)=>e.GetProperty("condition").GetString()!;
+try {
+    Check((await client.GetAsync("admin/assets")).StatusCode==HttpStatusCode.Unauthorized,"anonymous access denied");
+    client.DefaultRequestHeaders.Add("X-Test-Role","SINHVIEN");
+    Check((await client.GetAsync("admin/assets")).StatusCode==HttpStatusCode.Forbidden,"non-admin access denied");
+    client.DefaultRequestHeaders.Remove("X-Test-Role");client.DefaultRequestHeaders.Add("X-Test-Role","ADMIN");
+    var initial=await Overview();Check(initial.GetProperty("rooms").GetArrayLength()>0,"room/node overview SQL executes");
+    var chairs=await Json(await client.PostAsJsonAsync("admin/assets/receipts",new { name="Integration chairs",category="Chairs",quantity=40,trackingMode="BULK",note="Integration fixture" }));
+    int chairsId=Id(chairs);string catalog=chairs.GetProperty("catalogCode").GetString()!;
+    Check(Quantity(chairs)==40 && Room(chairs)==null,"receipt enters warehouse");
+    await Json(await client.PostAsJsonAsync($"admin/assets/{chairsId}/move",new { action="ALLOCATE",quantity=10,version=1,targetRoomId="DTD201",note="Allocate test" }));
+    var rows=await Items(catalog);Check(rows.Sum(Quantity)==40 && rows.Where(e=>Room(e)=="DTD201").Sum(Quantity)==10,"allocation conserves warehouse+room total");
+    var inRoom=rows.First(e=>Room(e)=="DTD201");
+    await Json(await client.PatchAsJsonAsync($"admin/assets/{Id(inRoom)}/condition",new { affectedCount=3,version=Version(inRoom),condition="DANG_BAO_TRI",note="Repair three" }));
+    rows=await Items(catalog);Check(rows.Sum(Quantity)==40 && rows.Where(e=>Room(e)=="DTD201").Sum(Quantity)==10 && rows.Where(e=>Condition(e)=="DANG_BAO_TRI").Sum(Quantity)==3,"partial status transition preserves room total");
+    var good=rows.First(e=>Room(e)=="DTD201" && Condition(e)=="TOT");
+    Check((await client.PatchAsJsonAsync($"admin/assets/{Id(good)}/condition",new { affectedCount=1,version=Version(good),condition="HONG",note="Tamper",quantity=999 })).StatusCode==HttpStatusCode.BadRequest,"status endpoint rejects quantity field");
+    var warehouse=await GetItem(chairsId);
+    var payload=new { action="ALLOCATE",quantity=10,version=Version(warehouse),targetRoomId="EAUT101",note="Concurrent allocation" };
+    var concurrent=await Task.WhenAll(client.PostAsJsonAsync($"admin/assets/{chairsId}/move",payload),client.PostAsJsonAsync($"admin/assets/{chairsId}/move",payload));
+    Check(concurrent.Count(r=>r.StatusCode==HttpStatusCode.OK)==1 && concurrent.Count(r=>r.StatusCode==HttpStatusCode.Conflict)==1,"concurrent allocation only commits once");
+    rows=await Items(catalog);Check(rows.Sum(Quantity)==40,"concurrent allocation preserves total");
+    warehouse=await GetItem(chairsId);
+    Check((await client.PostAsJsonAsync($"admin/assets/{chairsId}/move",new { action="ALLOCATE",quantity=999,version=Version(warehouse),targetRoomId="DTD201",note="Overdraw" })).StatusCode==HttpStatusCode.BadRequest,"stock cannot be overdrawn");
+    var repairing=rows.First(e=>Condition(e)=="DANG_BAO_TRI");
+    await Json(await client.PostAsJsonAsync($"admin/assets/{Id(repairing)}/move",new { action="RETURN",quantity=3,version=Version(repairing),note="Return damaged stock" }));
+    repairing=await GetItem(Id(repairing));Check(Room(repairing)==null && Condition(repairing)=="DANG_BAO_TRI","return keeps damaged condition");
+    Check((await client.PostAsJsonAsync($"admin/assets/{Id(repairing)}/move",new { action="ALLOCATE",quantity=1,version=Version(repairing),targetRoomId="DTD201",note="Reject damaged" })).StatusCode==HttpStatusCode.BadRequest,"damaged stock cannot be allocated");
+    good=await GetItem(Id(good));
+    await Json(await client.PostAsJsonAsync($"admin/assets/{Id(good)}/move",new { action="TRANSFER",quantity=2,version=Version(good),targetRoomId="EAUT101",note="Move two" }));
+    rows=await Items(catalog);Check(rows.Sum(Quantity)==40 && rows.Where(e=>Room(e)=="DTD201").Sum(Quantity)==5,"room transfer preserves totals");
+    var serialPayload=new { name="Integration projector",category="Projector",quantity=1,trackingMode="INDIVIDUAL",assetCode="INTEGRATION-MC001" };
+    var projector=await Json(await client.PostAsJsonAsync("admin/assets/receipts",serialPayload));
+    await Json(await client.PostAsJsonAsync($"admin/assets/{Id(projector)}/move",new { action="ALLOCATE",quantity=1,version=1,targetRoomId="DTD201",note="Projector allocation" }));
+    var projected=await GetItem(Id(projector));Check(projected.GetProperty("assetCode").GetString()=="INTEGRATION-MC001" && Room(projected)=="DTD201","individual asset keeps identity when moving");
+    Check((await client.PostAsJsonAsync("admin/assets/receipts",serialPayload)).StatusCode==HttpStatusCode.Conflict,"duplicate asset code rejected");
+    Check((await client.PostAsJsonAsync("admin/assets/receipts",new {name="Invalid projector",category="Projector",quantity=2,trackingMode="INDIVIDUAL",assetCode="INVALID-MC002"})).StatusCode==HttpStatusCode.BadRequest,"individual asset requires quantity one");
+    warehouse=await GetItem(chairsId);
+    await Json(await client.PostAsJsonAsync($"admin/assets/{chairsId}/count",new { actualCount=Quantity(warehouse)+2,version=Version(warehouse),note="Count difference" }));
+    Check((await Items(catalog)).Sum(Quantity)==42,"only inventory count changes overall total");
+    var old=initial.GetProperty("equipment").EnumerateArray().First(e=>e.GetProperty("usageScope").GetString()=="CABINET");
+    Check((await client.PatchAsJsonAsync($"operations/equipment/{Id(old)}",new { quantity=Quantity(old)+1,condition="TOT",note="Bypass attempt" })).StatusCode==HttpStatusCode.Conflict,"legacy endpoint cannot change quantity");
+    var logs=await Json(await client.GetAsync("admin/assets/history"));Check(logs.GetProperty("totalItems").GetInt32()>=9,"mutations record audit history");
+    var roomLogs=await Json(await client.GetAsync("admin/assets/history?roomId=DTD201"));Check(roomLogs.GetProperty("totalItems").GetInt32()>0,"room history query executes");
+    var node=initial.GetProperty("nodes").EnumerateArray().First();
+    var telemetry=await Json(await client.GetAsync($"admin/assets/nodes/{Id(node)}/history?hours=24"));
+    Check(telemetry.GetProperty("samples").GetArrayLength()>0,"stored telemetry loads for configured connectivity");
+    var bookingRooms=await Json(await client.GetAsync("rooms/get-rooms"));
+    Check(!bookingRooms.EnumerateArray().SelectMany(r=>r.GetProperty("equipment").EnumerateArray()).Any(e=>e.GetString()!.StartsWith("Integration")),"room assets excluded from borrowing cabinet inventory");
+    var emptyCatalog=await Json(await client.PostAsJsonAsync("admin/assets/catalogs",new {name="Integration empty catalog",category="Furniture",trackingMode="BULK",enabled=true}));
+    await Json(await client.DeleteAsync($"admin/assets/catalogs/{Id(emptyCatalog)}?version=1"));
+    Check(!(await Overview()).GetProperty("catalogs").EnumerateArray().Any(c=>Id(c)==Id(emptyCatalog)),"empty catalog can be created and deleted");
+    var sharedCatalogId=(await GetItem(chairsId)).GetProperty("catalogId").GetInt32();
+    var linkedCatalog=(await Overview()).GetProperty("catalogs").EnumerateArray().First(c=>Id(c)==sharedCatalogId);
+    await Json(await client.PatchAsJsonAsync($"admin/assets/catalogs/{sharedCatalogId}",new {name="Integration shared chairs",category="Shared furniture",trackingMode="BULK",enabled=true,version=Version(linkedCatalog)}));
+    Check((await Items(catalog)).All(e=>e.GetProperty("name").GetString()=="Integration shared chairs" && e.GetProperty("category").GetString()=="Shared furniture"),"catalog metadata synchronizes across warehouse and rooms");
+    Check((await client.DeleteAsync($"admin/assets/catalogs/{sharedCatalogId}?version=2")).StatusCode==HttpStatusCode.Conflict,"catalog with equipment cannot be deleted");
+    var stockBefore=await GetItem(chairsId);
+    await Json(await client.PostAsJsonAsync("admin/assets/rooms/DTD202/equipment",new {equipmentId=chairsId,quantity=3,version=Version(stockBefore),note="Add from warehouse"}));
+    var roomItem=(await Items(catalog)).First(e=>Room(e)=="DTD202" && e.GetProperty("condition").GetString()=="TOT");
+    var totalBefore=(await Items(catalog)).Sum(Quantity);
+    await Json(await client.PostAsJsonAsync($"admin/assets/{Id(roomItem)}/room-quantity",new {actualCount=Quantity(roomItem)+2,version=Version(roomItem),note="Increase from warehouse"}));
+    Check((await Items(catalog)).Sum(Quantity)==totalBefore && Quantity(await GetItem(Id(roomItem)))==Quantity(roomItem)+2,"room increase consumes warehouse and preserves total");
+    roomItem=await GetItem(Id(roomItem));
+    Check((await client.PostAsJsonAsync($"admin/assets/{Id(roomItem)}/room-quantity",new {actualCount=10000,version=Version(roomItem),note="Overdraw attempt"})).StatusCode==HttpStatusCode.Conflict,"room increase cannot exceed stock");
+    await Json(await client.PostAsJsonAsync($"admin/assets/{Id(roomItem)}/room-quantity",new {actualCount=1,version=Version(roomItem),note="Return difference"}));
+    Check((await Items(catalog)).Sum(Quantity)==totalBefore && Quantity(await GetItem(Id(roomItem)))==1,"room decrease returns difference and preserves total");
+    var allocated=await GetItem(Id(roomItem));
+    Check((await client.PostAsJsonAsync($"admin/assets/{Id(allocated)}/count",new {actualCount=8,version=Version(allocated),note="Direct count bypass"})).StatusCode==HttpStatusCode.BadRequest,"warehouse count cannot change room total directly");
+    var activeCatalog=(await Overview()).GetProperty("catalogs").EnumerateArray().First(c=>Id(c)==sharedCatalogId);
+    await Json(await client.PatchAsJsonAsync($"admin/assets/catalogs/{sharedCatalogId}",new {name="Integration shared chairs",category="Shared furniture",trackingMode="BULK",enabled=false,version=Version(activeCatalog)}));
+    var available=(await Items(catalog)).First(e=>Room(e)==null && e.GetProperty("condition").GetString()=="TOT");
+    Check((await client.PostAsJsonAsync("admin/assets/rooms/DTD202/equipment",new {equipmentId=Id(available),quantity=1,version=Version(available),note="Inactive catalog attempt"})).StatusCode==HttpStatusCode.Conflict,"disabled catalog cannot issue equipment");
+    var disabledCatalog=(await Overview()).GetProperty("catalogs").EnumerateArray().First(c=>Id(c)==sharedCatalogId);
+    await Json(await client.PatchAsJsonAsync($"admin/assets/catalogs/{sharedCatalogId}",new {name="Integration shared chairs",category="Shared furniture",trackingMode="BULK",enabled=true,version=Version(disabledCatalog)}));
+    var currentRoom=await GetItem(Id(roomItem));
+    var competing=await Task.WhenAll(Enumerable.Range(0,2).Select(_=>client.PostAsJsonAsync($"admin/assets/{Id(currentRoom)}/room-quantity",new {actualCount=2,version=Version(currentRoom),note="Concurrent quantity"})));
+    Check(competing.Count(r=>r.StatusCode==HttpStatusCode.OK)==1 && competing.Count(r=>r.StatusCode==HttpStatusCode.Conflict)==1,"concurrent room edits only commit once");
+    Check((await Items(catalog)).Sum(Quantity)==totalBefore,"concurrent room edits preserve catalog total");
+    var serialId=Id(projector);
+    var serialCurrent=await GetItem(serialId);
+    await Json(await client.PostAsJsonAsync($"admin/assets/{serialId}/room-quantity",new {actualCount=0,version=Version(serialCurrent),note="Return individual asset"}));
+    serialCurrent=await GetItem(serialId);
+    Check(Room(serialCurrent)==null && serialCurrent.GetProperty("assetCode").GetString()=="INTEGRATION-MC001","individual return preserves identity in warehouse");
+    await Json(await client.PostAsJsonAsync($"admin/assets/{serialId}/count",new {actualCount=0,version=Version(serialCurrent),note="Remove retired individual asset"}));
+    Check(!(await Overview()).GetProperty("equipment").EnumerateArray().Any(e=>Id(e)==serialId),"individual warehouse deletion records zero inventory");
+    var powerNodeId=Id(node);
+    var power=await Json(await client.GetAsync($"admin/assets/nodes/{powerNodeId}/power"));
+    Check(power.GetProperty("state").GetString()=="LOW" && !power.GetProperty("isFresh").GetBoolean(),"offline node retains last current reading");
+    await Json(await client.PatchAsJsonAsync($"admin/assets/nodes/{powerNodeId}/status",new {status="DISABLED"}));
+    Check((await Overview()).GetProperty("nodes").EnumerateArray().First(n=>Id(n)==powerNodeId).GetProperty("status").GetString()=="DISABLED","node maintenance is persisted and shown");
+    Check((await client.PatchAsJsonAsync($"admin/assets/nodes/{powerNodeId}/status",new {status="INVALID"})).StatusCode==HttpStatusCode.BadRequest,"invalid node mode rejected");
+    await Json(await client.PatchAsJsonAsync($"admin/assets/nodes/{powerNodeId}/status",new {status="ACTIVE"}));
+    Check((await Overview()).GetProperty("nodes").EnumerateArray().First(n=>Id(n)==powerNodeId).GetProperty("status").GetString()=="OFFLINE","resuming node does not fabricate online connectivity");
+    using(var scope=app.Services.CreateScope()) {
+        var db=scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var room=node.GetProperty("roomId").GetString()!;
+        db.phieu_muon.RemoveRange(await db.phieu_muon.Where(b=>b.ma_phong==room).ToListAsync());
+        var now=DateTime.UtcNow;
+        db.IotSensors.Add(new ClassHub_API.Models.IotSensor {NodeId=powerNodeId,BootId="power-test",Sequence=1,ReceivedAt=now,DataSource="MOCK",ReadingsJson="[{\"metric\":\"current\",\"value\":0.3,\"quality\":\"GOOD\"}]"});
+        await db.SaveChangesAsync();
+        power=await Json(await client.GetAsync($"admin/assets/nodes/{powerNodeId}/power"));
+        Check(power.GetProperty("state").GetString()=="LOW","below 1A is low consumption");
+        db.IotSensors.RemoveRange(await db.IotSensors.Where(t=>t.NodeId==powerNodeId && t.BootId=="power-test").ToListAsync());
+        await db.SaveChangesAsync();
+        for(int i=0;i<=14;i++) db.IotSensors.Add(new ClassHub_API.Models.IotSensor {NodeId=powerNodeId,BootId="power-test",Sequence=(ulong)(i+1),ReceivedAt=now.AddSeconds(-30*i),DataSource="MOCK",ReadingsJson="[{\"metric\":\"current\",\"value\":2,\"quality\":\"GOOD\"}]"});
+        await db.SaveChangesAsync();
+        power=await Json(await client.GetAsync($"admin/assets/nodes/{powerNodeId}/power"));
+        Check(power.GetProperty("state").GetString()=="OUT_OF_SCHEDULE","continuous high current outside borrowing warns");
+        db.phieu_muon.Add(new ClassHub_API.Models.PhieuMuon {ma_sv="ADMIN01",ma_phong=room,ca_muon=1,ngay_muon=now.AddHours(7).Date,thoi_gian_nhan=now.AddHours(7).AddMinutes(-10),trang_thai="IN_USE"});
+        await db.SaveChangesAsync();
+        power=await Json(await client.GetAsync($"admin/assets/nodes/{powerNodeId}/power"));
+        Check(power.GetProperty("state").GetString()=="IN_USE","active borrowing suppresses outside schedule warning");
+    }
+    Console.WriteLine($"Completed {passed} integration checks against isolated database.");
+} catch(Exception ex) {
+    var message=ex.Message.Replace(cs.ConnectionString,"[connection]");
+    if(!string.IsNullOrEmpty(cs.Password)) message=message.Replace(cs.Password,"[password]");
+    Console.WriteLine("FAIL: "+message);
+    Environment.ExitCode=1;
+} finally { await app.StopAsync(); }
+
+public class TestAuthentication(IOptionsMonitor<AuthenticationSchemeOptions> options,ILoggerFactory logger,UrlEncoder encoder)
+    : AuthenticationHandler<AuthenticationSchemeOptions>(options,logger,encoder)
+{
+    protected override Task<AuthenticateResult> HandleAuthenticateAsync() {
+        string role=Request.Headers["X-Test-Role"].ToString();
+        if(string.IsNullOrWhiteSpace(role)) return Task.FromResult(AuthenticateResult.NoResult());
+        var identity=new ClaimsIdentity(new[] {new Claim(ClaimTypes.NameIdentifier,"ADMIN01"),new Claim(ClaimTypes.Role,role)},"Test");
+        return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity),"Test")));
+    }
+}

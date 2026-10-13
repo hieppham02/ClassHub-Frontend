@@ -24,3 +24,27 @@ body {
 button, input, select {
   font: inherit;
 }
+
+@layer components {
+  .app-modal .modal-field {
+    @apply min-h-11 w-full min-w-0 rounded-xl border border-blue-100 bg-white px-3 text-sm font-medium normal-case tracking-normal text-ink outline-none transition focus:border-brand focus:ring-1 focus:ring-brand disabled:bg-slate-50 disabled:opacity-60;
+  }
+  .app-modal textarea.modal-field {
+    @apply min-h-24 resize-y py-3;
+  }
+  .app-modal .modal-label {
+    @apply mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500;
+  }
+  .app-modal .modal-cancel {
+    @apply flex min-h-11 min-w-0 flex-1 items-center justify-center rounded-xl border border-blue-200 bg-transparent px-4 text-sm font-medium text-brand transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .app-modal .modal-primary {
+    @apply flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .app-modal .modal-primary.modal-danger {
+    @apply bg-red-600 hover:bg-red-700;
+  }
+  .app-modal .modal-primary.modal-warning {
+    @apply bg-amber-600 hover:bg-amber-700;
+  }
+}

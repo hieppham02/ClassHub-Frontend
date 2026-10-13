@@ -46,6 +46,11 @@ const menuItems = [
     icon: `<path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />`
   },
   {
+    label: 'Quản lý tài sản',
+    href: '/admin/assets',
+    icon: `<path stroke-linecap="round" stroke-linejoin="round" d="M4 7l8-4 8 4v10l-8 4-8-4V7zm0 0l8 4 8-4m-8 4v10" />`
+  },
+  {
     label: 'Trang người dùng',
     mobileLabel: 'Trang chủ',
     href: '/',
@@ -63,10 +68,11 @@ const primaryMobileTabs = [
 
 // Các mục phụ trong Drawer "Thêm"
 const secondaryMobileTabs = [
+  menuItems[6], // Quản lý tài sản
   menuItems[2], // Tài khoản
   menuItems[3], // Tòa nhà & Phòng
   menuItems[5], // Thống kê
-  menuItems[6]  // Trang người dùng
+  menuItems[7]  // Trang người dùng
 ]
 
 function isActive(item) {

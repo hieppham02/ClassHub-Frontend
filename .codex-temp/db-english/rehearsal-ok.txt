@@ -1,0 +1,1 @@
+Forward and rollback rehearsed successfully; all original DDL restored.

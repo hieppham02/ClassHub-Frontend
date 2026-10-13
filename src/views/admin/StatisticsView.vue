@@ -1,11 +1,18 @@
 <script setup>
+import AppModal from '@/components/shared/AppModal.vue'
 import AdminLayout from '@/components/admin/layout/AdminLayout.vue'
+import AdminPageTitle from '@/components/admin/layout/AdminPageTitle.vue'
+import TablePagination from '@/components/shared/TablePagination.vue'
+import { usePagination } from '@/composables/usePagination.js'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { api } from '@/services/apiClient.js'
+import { buildStatisticsTimeline, timelineTicks } from '@/utils/statisticsTimeline.js'
 
 const showFilterModal = ref(false)
 const isLoading = ref(true)
 const errorMessage = ref('')
+const activeSection = ref('overview')
+const chartGranularity = ref('auto')
 
 const activeFilters = reactive({
   groupBy: 'room',
@@ -18,6 +25,10 @@ const tempFilters = reactive({
   dateFrom: '',
   dateTo: ''
 })
+
+const isInvalidDateRange = computed(() => Boolean(
+  tempFilters.dateFrom && tempFilters.dateTo && tempFilters.dateFrom > tempFilters.dateTo
+))
 
 const rawData = ref([])
 
@@ -51,33 +62,39 @@ const aggregatedData = computed(() => {
   return Object.values(grouped).sort((a, b) => b.total - a.total)
 })
 
+const { page, pageItems: pagedStatistics, totalItems } = usePagination(aggregatedData, [
+  () => activeFilters.groupBy, () => activeFilters.dateFrom, () => activeFilters.dateTo
+])
+
 const groupLabel = computed(() => {
   const labels = { room: 'Tên phòng', slot: 'Ca học', user: 'Người dùng', statusLabel: 'Trạng thái' }
   return labels[activeFilters.groupBy]
 })
 
-const dailyData = computed(() => {
-  const counts = new Map()
-  normalizedData.value.forEach(item => counts.set(item.date, (counts.get(item.date) || 0) + 1))
-  return [...counts.entries()].sort(([a], [b]) => a.localeCompare(b))
+const timeline = computed(() => buildStatisticsTimeline(normalizedData.value, {
+  from: activeFilters.dateFrom, to: activeFilters.dateTo, granularity: chartGranularity.value
+}))
+const chartUnitLabel = computed(() => ({ day: 'ngày', week: 'tuần', month: 'tháng' })[timeline.value.granularity])
+const maxChartCount = computed(() => {
+  const maximum = Math.max(1, ...timeline.value.series.map(item => item.count))
+  return Math.max(4, Math.ceil(maximum / 4) * 4)
 })
-
-const maxDailyCount = computed(() => Math.max(1, ...dailyData.value.map(([, count]) => count)))
-const chartPoints = computed(() => dailyData.value.map(([, count], index, items) => ({
-  x: items.length === 1 ? 400 : (index / (items.length - 1)) * 800,
-  y: 180 - (count / maxDailyCount.value) * 150,
-  count
+const chartPoints = computed(() => timeline.value.series.map((item, index, items) => ({
+  ...item,
+  x: items.length === 1 ? 400 : 6 + (index / (items.length - 1)) * 788,
+  y: 194 - (item.count / maxChartCount.value) * 184
 })))
 const lineChartPoints = computed(() => chartPoints.value.length
   ? `M ${chartPoints.value.map(point => `${point.x},${point.y}`).join(' L ')}`
   : '')
 const lineChartArea = computed(() => lineChartPoints.value
-  ? `${lineChartPoints.value} L ${chartPoints.value.at(-1).x},200 L ${chartPoints.value[0].x},200 Z`
+  ? `${lineChartPoints.value} L ${chartPoints.value.at(-1).x},194 L ${chartPoints.value[0].x},194 Z`
   : '')
 
-const chartLabels = computed(() => dailyData.value.map(([date]) => new Intl.DateTimeFormat('vi-VN', {
-  day: '2-digit', month: '2-digit'
-}).format(new Date(`${date}T00:00:00`))))
+const chartLabels = computed(() => timelineTicks(timeline.value.series).map(item => ({
+  ...item,
+  position: timeline.value.series.length === 1 ? 50 : (6 + item.index / (timeline.value.series.length - 1) * 788) / 8
+})))
 
 function getStatusLabel(status) {
   return {
@@ -108,7 +125,7 @@ function openFilterModal() {
 }
 
 async function applyFilter() {
-  if (tempFilters.dateFrom && tempFilters.dateTo && tempFilters.dateFrom > tempFilters.dateTo) {
+  if (isInvalidDateRange.value) {
     errorMessage.value = 'Ngày bắt đầu không được lớn hơn ngày kết thúc.'
     return
   }
@@ -122,22 +139,13 @@ onMounted(fetchStatistics)
 
 <template>
   <AdminLayout>
-    <!-- Giữ nền trắng thuần túy, bỏ background lưới, giữ font hệ thống Class Hub, áp dụng hoàn toàn layout cấu trúc thẻ thống kê ngang kiểu 9Router -->
-    <div class="min-h-screen bg-white text-ink px-6 sm:px-10 lg:px-16 py-8">
+    <div class="w-full text-ink">
       
       <!-- Modal Bộ lọc -->
-      <div v-if="showFilterModal" class="fixed inset-0 z-[70] flex items-center justify-center bg-ink/40 p-4 sm:p-5 backdrop-blur-sm" @click.self="showFilterModal = false">
-        <div class="w-full max-w-sm rounded-2xl bg-white border border-blue-100 shadow-2xl overflow-hidden flex flex-col">
-          <div class="bg-blue-50/60 p-5 text-ink flex justify-between items-center shrink-0 border-b border-blue-50">
-            <div><h2 class="text-base font-bold tracking-tight">Bộ lọc thống kê</h2></div>
-            <button @click="showFilterModal = false" class="rounded-full bg-blue-100/60 p-2 hover:bg-blue-200/60 transition text-slate-600">
-              <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
-          </div>
-
-          <div class="p-5 sm:p-6 flex flex-col gap-5">
-            <label class="grid gap-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">Gom nhóm theo
-              <select v-model="tempFilters.groupBy" class="h-11 rounded-xl border border-blue-100 bg-white px-4 text-sm text-ink outline-none focus:border-brand focus:ring-1 focus:ring-brand">
+      <AppModal v-if="showFilterModal" title="Bộ lọc thống kê" @close="showFilterModal = false">
+          <div class="flex flex-col gap-5">
+            <label class="grid gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">Gom nhóm theo
+              <select v-model="tempFilters.groupBy" class="modal-field">
                 <option value="room">Theo phòng học</option>
                 <option value="slot">Theo ca học</option>
                 <option value="user">Theo người dùng</option>
@@ -146,36 +154,29 @@ onMounted(fetchStatistics)
             </label>
             
             <div class="grid grid-cols-2 gap-4">
-              <label class="grid gap-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">Từ ngày
-                <input v-model="tempFilters.dateFrom" type="date" class="h-11 rounded-xl border border-blue-100 bg-white px-3 text-sm text-ink outline-none focus:border-brand focus:ring-1 focus:ring-brand" />
+              <label class="grid gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">Từ ngày
+                <input v-model="tempFilters.dateFrom" type="date" class="modal-field" />
               </label>
-              <label class="grid gap-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">Đến ngày
-                <input v-model="tempFilters.dateTo" type="date" class="h-11 rounded-xl border border-blue-100 bg-white px-3 text-sm text-ink outline-none focus:border-brand focus:ring-1 focus:ring-brand" />
+              <label class="grid gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">Đến ngày
+                <input v-model="tempFilters.dateTo" type="date" class="modal-field" />
               </label>
             </div>
-            <p v-if="tempFilters.dateFrom && tempFilters.dateTo && tempFilters.dateFrom > tempFilters.dateTo" class="text-xs font-medium text-red-600">
+            <p class="text-xs leading-relaxed text-slate-500">Để trống ngày để áp dụng tất cả các ngày. Nếu chỉ nhập một ngày, dữ liệu được lọc từ hoặc đến ngày đó.</p>
+            <p v-if="isInvalidDateRange" class="text-xs font-medium text-red-600">
               Ngày bắt đầu không được lớn hơn ngày kết thúc.
             </p>
           </div>
-
-          <div class="bg-slate-50 p-4 border-t border-blue-50 flex gap-3">
-            <button @click="showFilterModal = false" class="h-10 flex-1 rounded-xl border border-blue-200 text-xs font-bold text-slate-600 hover:bg-white transition">Hủy</button>
-            <button @click="applyFilter" :disabled="tempFilters.dateFrom && tempFilters.dateTo && tempFilters.dateFrom > tempFilters.dateTo" class="h-10 flex-1 rounded-xl bg-brand text-xs font-bold text-white shadow-md hover:bg-brand-dark transition disabled:cursor-not-allowed disabled:opacity-50">Áp dụng</button>
-          </div>
-        </div>
-      </div>
+          <template #footer>
+            <button type="button" @click="showFilterModal = false" class="modal-cancel">Hủy</button>
+            <button type="button" @click="applyFilter" :disabled="isInvalidDateRange" class="modal-primary">Áp dụng</button>
+          </template>
+        </AppModal>
 
       <!-- Header -->
-      <div class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-blue-100 pb-6">
-        <div>
-          <div class="flex items-center gap-2">
-            <span class="inline-block size-2 rounded-full bg-brand"></span>
-            <p class="text-[11px] font-bold uppercase tracking-widest text-brand">Analytics Dashboard</p>
-          </div>
-          <h1 class="mt-1 text-2xl sm:text-3xl font-black text-ink tracking-tight">Thống kê lượt mượn trả</h1>
-        </div>
+      <div class="sticky top-0 z-40 flex flex-col gap-4 border-b border-slate-200/60 bg-mist/95 px-4 pt-6 pb-4 shadow-sm backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8 xl:px-12">
+        <AdminPageTitle eyebrow="Analytics Dashboard" title="Thống kê lượt mượn trả" />
         
-        <div class="flex items-center gap-4">
+        <div class="flex flex-wrap items-center gap-3">
           <p class="text-xs font-medium text-slate-500">
             Đang xem theo: <span class="text-brand font-semibold">{{ groupLabel }}</span>
           </p>
@@ -188,69 +189,77 @@ onMounted(fetchStatistics)
         </div>
       </div>
 
-      <div v-if="errorMessage" class="mb-6 flex items-center justify-between gap-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+      <!-- Nội dung dùng cùng lề và nền với các trang quản trị -->
+      <div class="px-4 pt-5 pb-10 sm:px-6 lg:px-8 xl:px-12">
+      <div v-if="errorMessage" class="mb-5 flex items-center justify-between gap-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
         <span>{{ errorMessage }}</span>
         <button class="shrink-0 font-bold underline underline-offset-2" @click="fetchStatistics">Thử lại</button>
       </div>
 
-      <div v-if="isLoading" class="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4" aria-label="Đang tải thống kê">
+      <div v-if="isLoading" class="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4" aria-label="Đang tải thống kê">
         <div v-for="index in 4" :key="index" class="h-28 animate-pulse rounded-2xl border border-blue-100 bg-slate-100"></div>
       </div>
 
-      <!-- Dashboard Cards (Style các thẻ thông số ngang liền mạch y hệt UI ảnh mẫu) -->
-      <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <!-- Thẻ số liệu -->
+      <div v-else class="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div class="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm flex flex-col justify-between">
           <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Tổng lượt mượn</p>
-          <p class="text-2xl sm:text-3xl font-black text-ink mt-3 tracking-tight">{{ normalizedData.length }}</p>
+          <p class="text-2xl sm:text-3xl font-bold text-ink mt-3 tracking-tight">{{ normalizedData.length }}</p>
         </div>
         
         <div class="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm flex flex-col justify-between">
           <div>
             <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Đã hoàn tất</p>
-            <p class="text-2xl sm:text-3xl font-black text-emerald-600 mt-3 tracking-tight">{{ completedCount }}</p>
+            <p class="text-2xl sm:text-3xl font-bold text-emerald-600 mt-3 tracking-tight">{{ completedCount }}</p>
           </div>
         </div>
 
         <div class="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm flex flex-col justify-between">
           <div>
             <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Cần xử lý</p>
-            <p class="text-2xl sm:text-3xl font-black text-red-600 mt-3 tracking-tight">{{ lateCount }}</p>
+            <p class="text-2xl sm:text-3xl font-bold text-red-600 mt-3 tracking-tight">{{ lateCount }}</p>
           </div>
         </div>
 
         <div class="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm flex flex-col justify-between">
           <div>
             <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Tỷ lệ hoàn tất</p>
-            <p class="text-2xl sm:text-3xl font-black text-brand mt-3 tracking-tight">
+            <p class="text-2xl sm:text-3xl font-bold text-brand mt-3 tracking-tight">
               {{ completionRate }}%
             </p>
           </div>
         </div>
       </div>
 
-      <!-- Biểu đồ Đường sóng mượt (Smooth Area Line Chart) chuẩn phong cách trang chủ ảnh mẫu nhưng dùng trọn vẹn tone màu brand của hệ thống -->
-      <div class="grid grid-cols-1 gap-6 mb-6">
-        <div class="rounded-2xl border border-blue-100 bg-white p-6 shadow-sm">
-          <div class="flex items-center justify-between mb-6">
-            <div class="flex items-center gap-2 rounded-xl bg-blue-50/80 p-1 border border-blue-100">
-              <button class="rounded-lg bg-brand px-4 py-1.5 text-xs font-bold text-white shadow-sm">Biểu đồ tổng quan</button>
-              <button class="rounded-lg px-4 py-1.5 text-xs font-bold text-slate-600 hover:text-brand transition">Chi tiết</button>
+      <!-- Biểu đồ tổng quan và chuyển chế độ -->
+      <div class="mb-5 grid grid-cols-1 gap-5">
+        <div class="min-w-0 rounded-2xl border border-blue-100 bg-white p-4 sm:p-6 shadow-sm">
+          <div class="flex flex-wrap items-center justify-between gap-3" :class="activeSection === 'overview' ? 'mb-6' : ''">
+            <div class="flex items-center gap-2 rounded-xl bg-blue-50/80 p-1 border border-blue-100" role="tablist" aria-label="Chế độ thống kê">
+              <button id="statistics-overview-tab" type="button" role="tab" aria-controls="statistics-overview" :aria-selected="activeSection === 'overview'" @click="activeSection = 'overview'"
+                :class="activeSection === 'overview' ? 'bg-brand text-white shadow-sm' : 'text-slate-600 hover:text-brand'" class="min-h-10 rounded-lg px-4 py-1.5 text-xs font-bold transition">Biểu đồ tổng quan</button>
+              <button id="statistics-details-tab" type="button" role="tab" aria-controls="statistics-details" :aria-selected="activeSection === 'details'" @click="activeSection = 'details'"
+                :class="activeSection === 'details' ? 'bg-brand text-white shadow-sm' : 'text-slate-600 hover:text-brand'" class="min-h-10 rounded-lg px-4 py-1.5 text-xs font-bold transition">Chi tiết</button>
             </div>
-            <div class="flex gap-2">
-              <span class="inline-flex items-center rounded-md bg-blue-50 px-2.5 py-1 text-xs font-bold text-brand border border-blue-100">{{ dailyData.length }} ngày có dữ liệu</span>
+            <div v-if="activeSection === 'overview'" class="flex flex-wrap items-center gap-2">
+              <select v-model="chartGranularity" aria-label="Đơn vị thời gian biểu đồ" class="h-11 rounded-xl border border-blue-100 bg-white px-3 text-sm text-slate-600 outline-none focus:ring-2 focus:ring-brand">
+                <option value="auto">Tự động</option><option value="day">Theo ngày</option><option value="week">Theo tuần</option><option value="month">Theo tháng</option>
+              </select>
+              <span class="inline-flex items-center rounded-md bg-blue-50 px-2.5 py-1 text-xs font-bold text-brand border border-blue-100">{{ timeline.series.length }} {{ chartUnitLabel }}</span>
             </div>
           </div>
-          
-          <div class="relative w-full h-64">
-            <div class="absolute inset-0 flex flex-col justify-between pointer-events-none">
-              <div class="border-b border-blue-50 w-full text-[10px] text-slate-400 pl-1">{{ maxDailyCount }}</div>
-              <div class="border-b border-blue-50 w-full text-[10px] text-slate-400 pl-1">{{ Math.round(maxDailyCount * 0.75) }}</div>
-              <div class="border-b border-blue-50 w-full text-[10px] text-slate-400 pl-1">{{ Math.round(maxDailyCount * 0.5) }}</div>
-              <div class="border-b border-blue-50 w-full text-[10px] text-slate-400 pl-1">{{ Math.round(maxDailyCount * 0.25) }}</div>
-              <div class="border-b border-blue-50 w-full text-[10px] text-slate-400 pl-1">0</div>
+
+          <div v-show="activeSection === 'overview'" id="statistics-overview" role="tabpanel" aria-labelledby="statistics-overview-tab">
+          <p class="mb-3 text-xs text-slate-500">Số lượt mượn theo {{ chartUnitLabel }} · Di chuột vào điểm để xem số lượt.</p>
+          <div class="relative w-full h-64 pl-10 pr-2">
+            <div class="absolute inset-y-0 left-0 w-8 flex flex-col justify-between py-2 text-right text-[10px] text-slate-400" aria-hidden="true">
+              <span>{{ maxChartCount }}</span><span>{{ maxChartCount * 0.75 }}</span><span>{{ maxChartCount * 0.5 }}</span><span>{{ maxChartCount * 0.25 }}</span><span>0</span>
+            </div>
+            <div class="absolute inset-y-2 left-10 right-2 flex flex-col justify-between pointer-events-none" aria-hidden="true">
+              <div v-for="line in 5" :key="line" class="border-b border-blue-50"></div>
             </div>
 
-            <svg viewBox="0 0 800 200" preserveAspectRatio="none" class="w-full h-full relative z-10">
+            <svg viewBox="0 0 800 200" preserveAspectRatio="none" class="w-full h-full relative z-10" role="img" :aria-label="`Biểu đồ số lượt mượn theo ${chartUnitLabel}`">
               <defs>
                 <linearGradient id="systemBrandGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stop-color="var(--color-brand, #2563eb)" stop-opacity="0.25" />
@@ -259,20 +268,26 @@ onMounted(fetchStatistics)
               </defs>
               <path :d="lineChartArea" fill="url(#systemBrandGradient)" />
               <path :d="lineChartPoints" fill="none" stroke="var(--color-brand, #2563eb)" stroke-width="2.5" stroke-linecap="round" />
-              <circle v-for="point in chartPoints" :key="`${point.x}-${point.y}`" :cx="point.x" :cy="point.y" r="4" fill="white" stroke="var(--color-brand, #2563eb)" stroke-width="2" />
+              <circle v-for="point in chartPoints" :key="point.date" :cx="point.x" :cy="point.y" :r="chartPoints.length > 40 ? 2 : 4" fill="white" stroke="var(--color-brand, #2563eb)" stroke-width="2" tabindex="0" :aria-label="`${chartUnitLabel} ${point.label}: ${point.count} lượt`">
+                <title>{{ chartUnitLabel }} {{ point.label }}: {{ point.count }} lượt</title>
+              </circle>
             </svg>
-            <div v-if="!isLoading && dailyData.length === 0" class="absolute inset-0 z-20 flex items-center justify-center text-sm font-medium text-slate-400">Không có dữ liệu để vẽ biểu đồ.</div>
+            <div v-if="!isLoading && normalizedData.length === 0" class="absolute inset-0 z-20 flex items-center justify-center text-sm font-medium text-slate-400">Không có dữ liệu để vẽ biểu đồ.</div>
           </div>
 
-          <div class="flex justify-between text-[10px] text-slate-400 mt-3 font-mono">
-            <span v-for="label in chartLabels" :key="label">{{ label }}</span>
+          <div class="pl-10 pr-2 mt-3">
+            <div class="relative h-5 text-[10px] text-slate-500">
+              <span v-for="(tick, index) in chartLabels" :key="tick.date" class="absolute whitespace-nowrap"
+                :style="{ left: `${tick.position}%`, transform: index === 0 && chartLabels.length > 1 ? 'none' : index === chartLabels.length - 1 && chartLabels.length > 1 ? 'translateX(-100%)' : 'translateX(-50%)' }">{{ tick.label }}</span>
+            </div>
+          </div>
           </div>
         </div>
       </div>
 
       <!-- Detail table -->
-      <div class="rounded-2xl border border-blue-100 bg-white shadow-sm overflow-hidden">
-        <div class="px-6 py-4 border-b border-blue-50 bg-blue-50/30">
+      <div v-show="activeSection === 'details'" id="statistics-details" role="tabpanel" aria-labelledby="statistics-details-tab" class="rounded-2xl border border-blue-100 bg-white shadow-sm overflow-hidden">
+        <div class="px-5 py-4 border-b border-blue-50 bg-blue-50/30">
           <h2 class="text-xs font-bold uppercase tracking-wider text-ink">Bảng chi tiết</h2>
         </div>
         
@@ -280,20 +295,20 @@ onMounted(fetchStatistics)
           <table class="w-full text-sm">
             <thead>
               <tr class="border-b border-blue-50 bg-blue-50/60">
-                <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">{{ groupLabel }}</th>
-                <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Tổng mượn</th>
-                <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Đã hoàn tất</th>
-                <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Cần xử lý</th>
-                <th class="px-6 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">Tỷ lệ hoàn thành</th>
+                <th class="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">{{ groupLabel }}</th>
+                <th class="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Tổng mượn</th>
+                <th class="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Đã hoàn tất</th>
+                <th class="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Cần xử lý</th>
+                <th class="px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Tỷ lệ hoàn thành</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-blue-50">
-              <tr v-for="item in aggregatedData" :key="item.name" class="transition hover:bg-blue-50/30">
-                <td class="px-6 py-4 font-semibold text-ink">{{ item.name }}</td>
-                <td class="px-6 py-4 font-bold text-brand">{{ item.total }}</td>
-                <td class="px-6 py-4 font-medium text-emerald-600">{{ item.onTime }}</td>
-                <td class="px-6 py-4 font-medium text-red-500">{{ item.late }}</td>
-                <td class="px-6 py-4 font-bold text-slate-700">
+              <tr v-for="item in pagedStatistics" :key="item.name" class="transition hover:bg-blue-50/30">
+                <td class="px-5 py-4 font-semibold text-ink">{{ item.name }}</td>
+                <td class="px-5 py-4 font-bold text-brand">{{ item.total }}</td>
+                <td class="px-5 py-4 font-medium text-emerald-600">{{ item.onTime }}</td>
+                <td class="px-5 py-4 font-medium text-red-500">{{ item.late }}</td>
+                <td class="px-5 py-4 font-bold text-slate-700">
                   {{ Math.round((item.onTime / item.total) * 100) }}%
                 </td>
               </tr>
@@ -303,8 +318,9 @@ onMounted(fetchStatistics)
             </tbody>
           </table>
         </div>
+        <TablePagination v-model:page="page" :total-items="totalItems" :disabled="isLoading" label="nhóm thống kê" />
       </div>
-
+      </div>
     </div>
   </AdminLayout>
 </template>
