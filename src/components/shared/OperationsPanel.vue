@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { api } from '@/services/apiClient.js'
+import AppModal from '@/components/shared/AppModal.vue'
 import TablePagination from '@/components/shared/TablePagination.vue'
 import ReturnInspectionPanel from '@/components/shared/ReturnInspectionPanel.vue'
 import RfidTagsPanel from '@/components/shared/RfidTagsPanel.vue'
@@ -13,7 +14,24 @@ const { page: equipmentPage, pageItems: pagedEquipment, totalItems: equipmentTot
 const error = ref('')
 const busy = ref(false)
 const showEquipment = ref(false)
-const review = ref(null)
+const review = ref(null), manualReturn = ref(null)
+const manualCondition = ref('BINH_THUONG'), manualNote = ref(''), manualError = ref(''), confirming = ref(false), notice = ref('')
+function openManual(alert) {
+  manualReturn.value = alert; manualCondition.value = 'BINH_THUONG'; manualNote.value = ''
+  manualError.value = ''; notice.value = ''
+}
+async function confirmManual() {
+  if (!manualReturn.value || confirming.value) return
+  confirming.value = true; manualError.value = ''
+  try {
+    const result = await api.post('/operations/sessions/' + manualReturn.value.sessionId + '/confirm-return-manual', {
+      acknowledged: true, condition: manualCondition.value, note: manualNote.value.trim() || null,
+    })
+    notice.value = result.message; manualReturn.value = null; review.value = null
+    await refresh()
+  } catch (err) { manualError.value = err.message }
+  finally { confirming.value = false }
+}
 let timer
 async function refresh() {
   try { alerts.value = await api.get('/operations/alerts'); error.value = '' }
@@ -49,6 +67,7 @@ onUnmounted(() => clearInterval(timer))
         <button v-if="admin" @click="loadEquipment" class="min-h-11 rounded-xl border border-blue-100 px-3 text-sm text-brand">Danh mục thiết bị</button>
       </div>
     </div>
+    <p v-if="notice" role="status" class="mt-3 text-sm text-emerald-700">{{ notice }}</p>
     <p v-if="error" role="alert" class="mt-3 text-sm text-red-600">{{ error }}</p>
     <p v-if="!error && !alerts.length" class="mt-3 text-sm text-slate-500">Không có phiếu quá hạn hoặc đang chờ xác nhận trả.</p>
     <ul class="mt-3 space-y-2">
@@ -57,10 +76,33 @@ onUnmounted(() => clearInterval(timer))
           <p>{{ alert.isOverdue ? 'Quá hạn trả' : 'Chờ kiểm tra trả' }} · Hạn: {{ new Date(alert.dueAt).toLocaleString('vi-VN') }}</p>
           <p v-if="alert.note" class="mt-1 break-words">{{ alert.note }}</p>
         </div>
-        <button v-if="admin && alert.needsReview" @click="openReview(alert)" class="min-h-11 rounded-xl bg-brand px-4 text-white">Kiểm tra trả</button>
+        <div v-if="admin && alert.needsReview" class="flex flex-wrap gap-2">
+          <button @click="openReview(alert)" class="min-h-11 rounded-xl border border-blue-200 px-4 text-brand">Kiểm tra trả</button>
+          <button @click="openManual(alert)" class="min-h-11 rounded-xl bg-brand px-4 text-white">Xác nhận trả đồ</button>
+        </div>
       </li>
     </ul>
     <TablePagination v-if="admin" v-model:page="alertPage" :total-items="alertTotal" :disabled="busy" label="cảnh báo" />
+    <Teleport to="body">
+      <AppModal v-if="admin && manualReturn" title="Xác nhận trả đồ thủ công" size="md" :busy="confirming" @close="manualReturn = null">
+        <p class="font-semibold">{{ manualReturn.room }} · Phiếu #{{ manualReturn.sessionId }}</p>
+        <p class="mt-3 text-sm leading-6 text-slate-600">Admin xác nhận đã nhận đủ thiết bị và tủ đã đóng, khóa. Thao tác này bỏ qua AI camera và RFID, đồng thời kết thúc phiên mượn.</p>
+        <label class="mt-4 block text-sm">Tình trạng thiết bị
+          <select v-model="manualCondition" :disabled="confirming" class="mt-2 min-h-11 w-full rounded-lg border border-slate-200 px-3">
+            <option value="BINH_THUONG">Đã trả đủ, bình thường</option>
+            <option value="HONG_HOC">Đã trả đủ, có hỏng hóc</option>
+          </select>
+        </label>
+        <label class="mt-4 block text-sm">Ghi chú
+          <textarea v-model="manualNote" :disabled="confirming" maxlength="2000" placeholder="Kết quả kiểm tra thủ công" class="mt-2 w-full rounded-lg border border-slate-200 p-3" />
+        </label>
+        <p v-if="manualError" role="alert" class="mt-3 text-sm text-red-600">{{ manualError }}</p>
+        <template #footer>
+          <button :disabled="confirming" class="modal-cancel" @click="manualReturn = null">Hủy</button>
+          <button :disabled="confirming || (manualCondition === 'HONG_HOC' && !manualNote.trim())" class="modal-primary" @click="confirmManual">{{ confirming ? 'Đang xác nhận…' : 'Xác nhận trả đồ' }}</button>
+        </template>
+      </AppModal>
+    </Teleport>
     <div v-if="review" class="mt-4">
       <ReturnInspectionPanel :key="review.sessionId" :session-id="review.sessionId" admin @confirmed="review = null; refresh()" />
       <button @click="review = null" class="min-h-11 px-3 text-sm">Đóng kiểm tra</button>
