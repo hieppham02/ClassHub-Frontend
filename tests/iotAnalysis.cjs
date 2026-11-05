@@ -39,9 +39,13 @@ try{
    const route=new URL(request.url).pathname;
    let body={items:[],samples:[],totalItems:0};
    if(route.endsWith('/admin/assets')) body={rooms:[{id:'R1',name:'Phòng demo',locationType:'ROOM',buildingId:'B1',building:'Tòa A',floor:1}],catalogs:[],equipment:[],nodes:[{id:1,nodeCode:'DEMO_R1',roomId:'R1',name:'Node demo',needsAttention:true,dataSource:'MOCK',status:'ONLINE',lastSeenAt:new Date().toISOString(),readings:[{metric:'temperature',value:41,quality:'GOOD'},{metric:'humidity',value:48,quality:'GOOD'},{metric:'current',value:12,quality:'GOOD'}]}]};
+   if(route.endsWith('/admin/assets')){
+    body.rooms.push({id:'R2',name:'Phòng đang mượn',locationType:'ROOM',buildingId:'B1',building:'Tòa A',floor:1});
+    body.nodes.push({id:2,nodeCode:'DEMO_R2',roomId:'R2',name:'Node active',isInUse:true,needsAttention:false,dataSource:'MOCK',status:'ONLINE',lastSeenAt:new Date().toISOString(),readings:[{metric:'temperature',value:41,quality:'GOOD'},{metric:'humidity',value:90,quality:'GOOD'},{metric:'current',value:12,quality:'GOOD'}]});
+   }
    if(route.endsWith('/damage-reports'))body=[];
    if(route.endsWith('/power'))body={state:'MOCK'};
-   if(route.endsWith('/analysis')) body=analysis;
+   if(route.endsWith('/analysis')) body=route.includes('/nodes/2/')?{...analysis,state:'IN_USE',summary:'Phòng đang hoạt động',usageContext:'IN_USE',findings:[]}:analysis;
    call('Fetch.fulfillRequest',{requestId,responseCode:200,responseHeaders:[{name:'Content-Type',value:'application/json'},{name:'Access-Control-Allow-Origin',value:'*'},{name:'Access-Control-Allow-Headers',value:'*'}],body:Buffer.from(JSON.stringify(body)).toString('base64')}).catch(()=>{});
   }
  };
@@ -61,11 +65,17 @@ try{
   await until("document.querySelector('.iot-status-tile[aria-pressed=true]')?.innerText.includes('Cảnh báo')");
   assert.ok(await evaluate("document.querySelector('.iot-node-card').innerText.includes('Nhiệt độ cao bất thường')"));
   assert.equal(await evaluate("/mô phỏng|giả định|thử nghiệm/i.test(document.body.innerText)"),false);
+  assert.equal(await evaluate("Array.from(document.querySelectorAll('.iot-room-picker button.block')).some(x=>x.innerText.includes('Phòng đang mượn'))"),false);
+  await evaluate("Array.from(document.querySelectorAll('.iot-status-tile')).find(x=>x.innerText.includes('Đang hoạt động')).click()");
+  await until("document.querySelector('.iot-node-card')?.innerText.includes('Phòng đang hoạt động')");
+  assert.equal(await evaluate("document.querySelector('.iot-node-card').innerText.includes('Nhiệt độ cao bất thường')"),false);
+  assert.equal(await evaluate("Array.from(document.querySelectorAll('.iot-metric-card')).some(x=>x.innerText.includes('Cần xử lý ngay'))"),false);
+
   assert.ok(await evaluate("document.documentElement.scrollWidth<=innerWidth+2"));
   fs.writeFileSync(path.join(out,'iot-'+width+'.png'),Buffer.from((await call('Page.captureScreenshot',{format:'png'})).data,'base64'));
  }
  analysis={state:'UNAVAILABLE',reason:'Chưa có số đo mới và đồng bộ thời gian để phân tích.'};
- await call('Page.reload');
+ await call('Page.navigate',{url:origin+'/admin/assets?tab=iot&room=R1'});
  await until("document.body.innerText.includes('Chưa có số đo mới và đồng bộ thời gian để phân tích.')");
  assert.equal(await evaluate("document.body.innerText.includes('Cần kiểm tra phòng')"),false);
  console.log('PASS AI panel shows both anomalies, warning count/filter, simplified labels, stale state; desktop/mobile no horizontal overflow.');
