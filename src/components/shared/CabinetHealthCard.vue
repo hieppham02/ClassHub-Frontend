@@ -1,8 +1,11 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import AppModal from '@/components/shared/AppModal.vue'
+import CabinetCameraPanel from '@/components/shared/CabinetCameraPanel.vue'
+import CabinetRfidSetup from '@/components/shared/CabinetRfidSetup.vue'
 
-const props = defineProps({ value: { type: Object, default: null }, online: Boolean, name: { type: String, default: '' } })
+const props = defineProps({ value: { type: Object, default: null }, online: Boolean, cabinetId: { type: Number, default: 0 }, name: { type: String, default: '' } })
+const cameraOpen = ref(false), tab = ref("overview")
 const show = ref(false), trigger = ref(null), dialog = ref(null)
 const receivedOnClient = ref(performance.now()), clock = ref(performance.now())
 let timer
@@ -17,18 +20,11 @@ const reader = computed(() => metrics.value.readerInitialized === true ? 'Đã k
 const camera = computed(() => metrics.value.cameraRecentFrame === true ? 'Có khung hình' : metrics.value.cameraRecentFrame === false ? 'Chưa có khung mới' : 'Chưa có số đo')
 const fps = computed(() => Number.isFinite(metrics.value.cameraFps100) ? (metrics.value.cameraFps100 / 100).toFixed(2) : '—')
 const accessPoint = computed(() => metrics.value.apOpen === true ? 'Mạng mở' : metrics.value.securityProvisioned === true ? 'Có mật khẩu riêng' : 'Chưa có thông tin')
-const memoryCards = computed(() => [
-  { label: 'Heap trống', value: metrics.value.heapFree },
-  { label: 'Khối trống lớn nhất', value: metrics.value.heapLargest },
-  { label: 'PSRAM trống', value: metrics.value.psramFree }
-].map(item => {
-  const valid = Number.isFinite(item.value) && item.value >= 0
-  const mib = valid && item.value >= 1048576
-  return { label: item.label, amount: valid ? (item.value / (mib ? 1048576 : 1024)).toFixed(mib ? 2 : 0) : '—', unit: valid ? mib ? 'MiB' : 'KiB' : '' }
-}))
 function scanAge(value) { return value == null || value < 0 ? 'Chưa có lượt quét' : Math.round(value / 1000) + ' giây trước lần đo' }
 function formatDate(value) { return value ? new Date(value).toLocaleString('vi-VN') : 'Chưa ghi nhận' }
 function close() {
+  cameraOpen.value = false
+  tab.value = "overview"
   show.value = false
   nextTick(() => trigger.value?.focus())
 }
@@ -65,6 +61,13 @@ onUnmounted(() => { clearInterval(timer); window.removeEventListener('keydown', 
         </div>
       </div>
 
+      <div v-if="cabinetId" class="mb-5 flex flex-wrap gap-2">
+        <button type="button" :aria-pressed="tab === 'overview'" class="rounded-lg px-3 py-2 text-sm font-semibold" :class="tab === 'overview' ? 'bg-blue-50 text-blue-700' : 'text-slate-500 hover:bg-slate-50'" @click="tab = 'overview'">Tổng quan</button>
+        <button type="button" :aria-pressed="tab === 'rfid'" class="rounded-lg px-3 py-2 text-sm font-semibold" :class="tab === 'rfid' ? 'bg-blue-50 text-blue-700' : 'text-slate-500 hover:bg-slate-50'" @click="tab = 'rfid'">Thiết bị & RFID</button>
+        <button type="button" :aria-expanded="cameraOpen" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700" @click="cameraOpen = !cameraOpen">{{ cameraOpen ? 'Ẩn camera' : 'Xem camera' }}</button>
+      </div>
+      <CabinetCameraPanel v-if="cameraOpen && cabinetId" :cabinet-id="cabinetId" @close="cameraOpen = false" />
+      <template v-if="tab === 'overview'">
       <div v-if="value" class="space-y-5">
         <section v-if="metrics.currentError" class="rounded-xl border border-red-200 bg-red-50 p-4" role="status">
           <h3 class="flex items-center gap-2 font-semibold text-red-800">
@@ -111,17 +114,6 @@ onUnmounted(() => { clearInterval(timer); window.removeEventListener('keydown', 
           </div>
         </section>
 
-        <section aria-label="Bộ nhớ" class="space-y-3">
-          <h3 class="section-title">Bộ nhớ</h3>
-          <div class="grid grid-cols-3 gap-2 sm:gap-3">
-            <div v-for="item in memoryCards" :key="item.label" class="rounded-xl bg-slate-50 p-3 sm:p-4">
-              <p class="min-h-8 text-[11px] leading-4 text-slate-500">{{ item.label }}</p>
-              <p class="mt-1 text-lg font-bold tabular-nums text-slate-900 sm:text-xl">{{ item.amount }}</p>
-              <p class="mt-0.5 text-xs text-slate-400">{{ item.unit || 'Chưa có số đo' }}</p>
-            </div>
-          </div>
-        </section>
-
         <section aria-label="Hệ thống" class="rounded-xl border border-slate-200 p-4">
           <h3 class="section-title">Hệ thống</h3>
           <dl class="mt-3 space-y-2 text-xs">
@@ -140,6 +132,8 @@ onUnmounted(() => { clearInterval(timer); window.removeEventListener('keydown', 
         <p class="font-semibold text-slate-700">Chưa có thông tin thiết bị</p>
         <p class="mt-2 text-xs text-slate-500">Thông số sẽ xuất hiện khi tủ gửi dữ liệu về hệ thống.</p>
       </div>
+      </template>
+      <CabinetRfidSetup v-if="cabinetId && tab === 'rfid'" :cabinet-id="cabinetId" />
     </AppModal>
   </Teleport>
 </template>
