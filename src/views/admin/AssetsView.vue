@@ -159,7 +159,7 @@ const assetConditionClasses = {
   NGUNG_SU_DUNG: 'bg-slate-100 text-slate-600'
 }
 const actions = { CATALOG_CREATE: 'Thêm danh mục thiết bị', CATALOG_EDIT: 'Sửa danh mục thiết bị', CATALOG_DELETE: 'Xóa danh mục thiết bị', ADD_ROOM: 'Thêm thiết bị vào phòng', ROOM_QUANTITY: 'Thay đổi số lượng tại phòng', RECEIPT: 'Nhập kho', ALLOCATE: 'Phân bổ vào phòng', RETURN: 'Thu hồi về kho', TRANSFER: 'Điều chuyển phòng', CONDITION: 'Báo / đổi tình trạng', COUNT: 'Kiểm kê' }
-const metrics = [{ key: 'current', name: 'Dòng điện tổng phòng', unit: 'A' }, { key: 'temperature', name: 'Nhiệt độ', unit: '°C' }, { key: 'humidity', name: 'Độ ẩm', unit: '%' }, { key: 'airquality', name: 'Chỉ số không khí (node cũ)', unit: 'index' }, { key: 'co2', name: 'CO₂', unit: 'ppm' }, { key: 'light', name: 'Độ rọi', unit: 'lux' }]
+const metrics = [{ key: 'temperature', name: 'Nhiệt độ', unit: '°C' }, { key: 'humidity', name: 'Độ ẩm', unit: '%' }, { key: 'current', name: 'Dòng điện tổng phòng', unit: 'A' }]
 let refreshTimer
 let requestId = 0
 const selectedRoom = computed(() => rooms.value.find(r => r.id === roomId.value))
@@ -538,12 +538,12 @@ onUnmounted(() => { clearInterval(refreshTimer); requestId++; logRequestId++; te
                   </div>
                 </div>
                 <div class="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-slate-100 pt-4 text-xs text-slate-600">
-                  <h4 class="mr-auto text-sm font-semibold text-ink">Thông số thiết bị</h4>
+                  <h4 class="mr-auto text-sm font-semibold text-ink">Chỉ số</h4>
                   <span class="text-emerald-700">● Ổn định</span>
                   <span class="text-amber-700">● Cảnh báo</span>
                   <span class="text-red-700">● Cần xử lý ngay</span>
                 </div>
-                <div class="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+                <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div v-for="m in metrics" :key="m.key" class="iot-metric-card rounded-xl border p-3"
                     :class="metricState(node, m.key).classes">
                     <div class="flex items-center justify-between gap-2">
