@@ -272,8 +272,8 @@ async function book(room) {
     })
 
     showSuccessToast(booking.message || (room.locationType === 'CORRIDOR' ? 'Đăng ký mượn tủ hành lang thành công!' : 'Đăng ký phòng thành công!'))
-    selectedCabinet.value = null
     await fetchActiveSession()
+    selectedCabinet.value = room
     await fetchBookedRooms()
   } catch (err) { 
     triggerError(err.message || 'Không thể kết nối server')

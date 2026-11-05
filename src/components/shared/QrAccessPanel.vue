@@ -15,8 +15,28 @@ const showScanner = ref(false)
 const video = ref(null)
 const preview = ref(null)
 const token = ref('')
+const equipmentOptions = ref([]), selectedUids = ref([]), issuedSelection = ref(''), equipmentLoading = ref(false)
+let selectionGeneration = 0
+const selectionKey = () => JSON.stringify([...selectedUids.value].sort())
+const pickupReady = computed(() => issuedSelection.value !== '' && issuedSelection.value === selectionKey())
+const choosingEquipment = computed(() => props.session.status === 'PENDING')
+async function loadEquipment() {
+  const current = ++selectionGeneration
+  issuedSelection.value = ''; selectedUids.value = []; equipmentOptions.value = []
+  if (!choosingEquipment.value) return
+  equipmentLoading.value = true
+  try {
+    const data = await api.get('/cabinet/qr/' + props.session.id + '/equipment')
+    if (current !== selectionGeneration) return
+    equipmentOptions.value = data.items; selectedUids.value = data.selectedUids || []
+    if (data.selectionIssued) issuedSelection.value = selectionKey()
+  } catch (err) { if (current === selectionGeneration) error.value = err.message }
+  finally { if (current === selectionGeneration) equipmentLoading.value = false }
+}
+
 const purpose = computed(() => props.session.status === 'RETURNING' ? 'RETURN' : 'RECEIVE')
 const phaseLabels = {
+  RECEIVE_RFID_FAILED: 'Chưa quét đúng và đủ RFID của các món đã chọn. Tạo lại QR, mở tủ và quét lại trước khi đóng cửa.',
   RECEIVE_QR: 'QR nhận đồ đã gửi tới màn hình tủ.',
   RECEIVE_QR_FAILED: 'Chưa gửi được QR nhận đồ. Hãy cấp lại mã.',
   RECEIVE_OPEN_REQUESTED: 'Đang chờ tủ xác nhận mở cửa.',
@@ -33,7 +53,7 @@ const phaseLabels = {
 }
 const checkingReturn = computed(() => props.session.status === 'RETURNING' && ['RETURN_CHECK', 'RETURN_FAILED'].includes(props.session.qrPhase))
 const waitingCommand = computed(() => (props.session.qrPhase || '').endsWith('_OPEN_REQUESTED'))
-const mayScan = computed(() => ['PENDING', 'RETURNING'].includes(props.session.status) && !props.session.isCabinetOpen && !waitingCommand.value && !['RETURN_CHECK', 'RECEIVE_UNLOCKED', 'RETURN_UNLOCKED'].includes(props.session.qrPhase))
+const mayScan = computed(() => (!choosingEquipment.value || pickupReady.value) && ['PENDING', 'RETURNING'].includes(props.session.status) && !props.session.isCabinetOpen && !waitingCommand.value && !['RETURN_CHECK', 'RECEIVE_UNLOCKED', 'RETURN_UNLOCKED'].includes(props.session.qrPhase))
 let controls = null
 let generation = 0
 let decoding = false
@@ -51,7 +71,10 @@ async function issue() {
   if (busy.value) return
   busy.value = true; error.value = ''; preview.value = null; stopCamera()
   try {
-    const data = await api.post(`/cabinet/qr/${props.session.id}/issue`, { purpose: purpose.value })
+    const data = await api.post('/cabinet/qr/' + props.session.id + '/issue', {
+      purpose: purpose.value, ...(purpose.value === 'RECEIVE' ? { selectedUids: [...selectedUids.value] } : {}),
+    })
+    if (purpose.value === 'RECEIVE') issuedSelection.value = selectionKey()
     notice.value = data.message
   } catch (err) { error.value = err.message }
   finally { busy.value = false; emit('refresh') }
@@ -129,17 +152,32 @@ async function retry() {
   catch (err) { error.value = err.message }
   finally { busy.value = false; emit('refresh') }
 }
-watch(() => props.session.id, () => { closeScanner(); preview.value = null; token.value = ''; error.value = ''; notice.value = '' })
+watch(() => props.session.id, () => { closeScanner(); preview.value = null; token.value = ''; error.value = ''; notice.value = ''; loadEquipment() }, { immediate: true })
+watch(() => props.session.qrPhase, phase => { if (phase === 'RECEIVE_RFID_FAILED') issuedSelection.value = '' })
 watch(mayScan, (allowed) => { if (!allowed) { closeScanner(); preview.value = null; token.value = '' } })
-onUnmounted(stopCamera)
+onUnmounted(() => { selectionGeneration++; stopCamera() })
 </script>
 
 <template>
-  <ReturnInspectionPanel v-if="checkingReturn" :key="session.id" :session-id="session.id" compact />
+  <ReturnInspectionPanel v-if="checkingReturn" :key="session.id" :session-id="session.id" compact @retry-rfid="issue" />
   <section class="space-y-4">
+    <section v-if="choosingEquipment" class="rounded-xl border border-blue-100 p-4">
+      <h3 class="font-semibold text-ink">Chọn món cần mượn</h3>
+      <p class="mt-2 text-xs leading-5 text-slate-500">Chỉ chọn món sẽ lấy: mic, điều khiển điều hòa/TV hoặc chìa khóa. Khi nhận và trả, quét RFID đúng từng món đã chọn trong lúc cửa mở.</p>
+      <p v-if="equipmentLoading" class="mt-3 text-sm text-slate-500">Đang tải thiết bị…</p>
+      <p v-else-if="!equipmentOptions.length" class="mt-3 text-sm text-amber-700">Chưa có thiết bị được gắn RFID trong tủ. Liên hệ admin để bổ sung.</p>
+      <div class="mt-3 space-y-2">
+        <label v-for="item in equipmentOptions" :key="item.uid" class="flex items-center gap-3 rounded-lg bg-slate-50 p-3 text-sm">
+          <input v-model="selectedUids" type="checkbox" :value="item.uid" :disabled="busy || session.isCabinetOpen || waitingCommand || session.qrPhase === 'RECEIVE_UNLOCKED'" />
+          <span class="flex-1">{{ item.name }}</span><code class="text-xs text-slate-400">{{ item.uid }}</code>
+        </label>
+      </div>
+      <p class="mt-3 text-xs text-slate-500">Đã chọn {{ selectedUids.length }} món. Các món không chọn được giữ lại trong tủ.</p>
+      <button v-if="!pickupReady" type="button" :disabled="busy || !selectedUids.length || session.isCabinetOpen || waitingCommand || session.qrPhase === 'RECEIVE_UNLOCKED'" class="modal-primary mt-3" @click="issue">Tạo QR cho các món đã chọn</button>
+    </section>
     <h3 v-if="!checkingReturn" class="text-sm font-bold text-ink">{{ session.status === 'RETURNING' ? 'Trả đồ bằng QR' : 'Nhận đồ bằng QR' }}</h3>
-    <p v-if="!checkingReturn" class="rounded-xl bg-blue-50 p-3 text-sm text-slate-700" aria-live="polite">{{ phaseLabels[session.qrPhase] || 'Quét QR trên màn hình tủ để xác nhận mở cửa.' }}</p>
-    <RfidLivePanel v-if="['RECEIVE_OPEN', 'RETURN_OPEN'].includes(session.qrPhase)" :session-id="session.id" />
+    <p v-if="!checkingReturn" class="rounded-xl bg-blue-50 p-3 text-sm text-slate-700" aria-live="polite">{{ phaseLabels[session.qrPhase] || (choosingEquipment && !pickupReady ? 'Chọn món cần mượn rồi tạo QR nhận đồ.' : 'Quét QR trên màn hình tủ để xác nhận mở cửa.') }}</p>
+    <RfidLivePanel v-if="['RECEIVE_OPEN', 'RECEIVE_RFID_FAILED', 'RETURN_OPEN'].includes(session.qrPhase)" :session-id="session.id" />
     <p v-if="notice" class="text-sm text-emerald-700" role="status">{{ notice }}</p>
     <p v-if="error && !showScanner" class="text-sm text-red-600" role="alert">{{ error }}</p>
     <div v-if="mayScan" class="flex flex-wrap gap-2">

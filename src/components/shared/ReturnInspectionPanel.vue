@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { api } from '@/services/apiClient.js'
 import RfidSummary from './RfidSummary.vue'
 const props = defineProps({ sessionId: { type: Number, required: true }, admin: Boolean, compact: Boolean })
-const emit = defineEmits(['confirmed'])
+const emit = defineEmits(['confirmed', 'retry-rfid'])
 const evidence = ref(null), error = ref(''), busy = ref(false), loading = ref(false)
 const condition = ref('BINH_THUONG'), note = ref(''), counts = ref({})
 const acknowledged = ref(false)
@@ -59,8 +59,9 @@ onUnmounted(() => { stopped = true; clearInterval(timer) })
       <p v-if="error" role="alert" class="text-sm text-red-600">{{ error }}</p>
       <div v-else role="status" aria-live="polite" class="rounded-lg px-3 py-3 text-sm"
         :class="inspection?.status === 'PASS' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'">
-        {{ !evidence ? 'Đang tải trạng thái kiểm tra…' : !inspection ? 'Đang kiểm tra thiết bị…' : inspection.status === 'PASS' ? 'AI đề xuất đủ thiết bị · Chờ xác nhận trả' : 'Cần kiểm tra lại thiết bị · Chờ quản trị viên xử lý' }}
+        {{ !evidence ? 'Đang tải trạng thái kiểm tra…' : evidence.rfid?.status !== 'MATCH' ? 'Chưa quét đúng và đủ RFID của các món đã mượn.' : !inspection ? 'Đang kiểm tra thiết bị…' : inspection.status === 'PASS' ? 'AI đề xuất đủ thiết bị · Chờ xác nhận trả' : 'Cần kiểm tra lại thiết bị · Chờ quản trị viên xử lý' }}
       </div>
+      <button v-if="evidence && evidence.rfid?.status !== 'MATCH'" type="button" class="modal-cancel" @click="emit('retry-rfid')">Tạo lại QR để quét đủ RFID</button>
     </template>
     <template v-else>
     <h3 class="font-semibold">Xác minh trả đồ · Phiếu #{{ sessionId }}</h3>
