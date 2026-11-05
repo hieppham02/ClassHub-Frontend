@@ -355,7 +355,6 @@ const { page, pageItems: pagedCabinets, totalItems } = usePagination(filteredCab
                         <span class="size-2 rounded-full"
                           :class="cab.isOnline ? 'bg-emerald-500' : 'bg-slate-300'"></span>
                         <div>
-                          <p class="font-bold text-slate-900">{{ cab.name }}</p>
                           <CabinetHealthCard :value="cab.health" :online="cab.isOnline" :name="cab.name" />
                         </div>
                       </div>

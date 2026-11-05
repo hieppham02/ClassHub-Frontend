@@ -9,7 +9,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['close'])
 const titleId = useId()
-const widths = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-lg' }
+const widths = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-lg', xl: 'max-w-2xl' }
 const layers = { normal: 'z-[70]', nested: 'z-[80]', cabinet: 'z-[60]' }
 function close() {
   if (!props.busy) emit('close')
