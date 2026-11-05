@@ -17,6 +17,11 @@ const routes = [
 
   // --- ADMIN ROUTES (lazy-loaded) ---
   {
+    path: '/admin/ai',
+    component: () => import('./views/admin/AiInsightsView.vue'),
+    meta: { requiresAuth: true, roles: ['ADMIN'] }
+  },
+  {
     path: '/admin/batteries',
     component: () => import('./views/admin/BatteryMaintenanceView.vue'),
     meta: { requiresAuth: true, roles: ['ADMIN'] }

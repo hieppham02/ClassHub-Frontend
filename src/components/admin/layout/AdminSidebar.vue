@@ -64,6 +64,11 @@ menuItems.push({
   icon: '<path stroke-linecap="round" stroke-linejoin="round" d="M9 4h6v2h4v16H5V6h4V4zm0 8h6m-3-3v6" />'
 })
 
+menuItems.push({
+  label: 'AI & sử dụng phòng', href: '/admin/ai',
+  icon: '<path stroke-linecap="round" stroke-linejoin="round" d="M9 3h6v4h4v10h-4v4H9v-4H5V7h4V3zm0 8h6m-6 3h3" />'
+})
+
 // 3 mục chính trên bottom bar
 const primaryMobileTabs = [
   menuItems[0], // Tổng quan
@@ -78,6 +83,7 @@ const secondaryMobileTabs = [
   menuItems[3], // Tòa nhà & Phòng
   menuItems[5], // Thống kê
   menuItems[8], // Pin micro
+  menuItems[9], // AI
   menuItems[7]  // Trang người dùng
 ]
 
