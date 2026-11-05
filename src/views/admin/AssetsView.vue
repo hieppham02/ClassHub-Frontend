@@ -89,6 +89,7 @@ const nodes = ref([])
 const nodeFilter = ref('')
 function matchesNodeFilter(node) { return !nodeFilter.value || (nodeFilter.value === 'ACTIVE' ? node.status !== 'DISABLED' : node.status === nodeFilter.value) }
 const powerStates = ref({})
+const aiStates = ref({})
 const statisticsNodes = computed(() => {
   const roomIds = new Set(rooms.value.filter(r => (!building.value || r.buildingId === building.value) && (!floor.value || String(r.floor) === floor.value)).map(r => r.id))
   return nodes.value.filter(n => roomIds.has(n.roomId))
@@ -142,7 +143,14 @@ async function loadPower() {
     try { return [node.id, await api.get(`/admin/assets/nodes/${node.id}/power`)] }
     catch { return [node.id, { state: 'UNKNOWN', roomHasActiveBorrowing: null }] }
   }))
-  if (sequence === powerRequestId) powerStates.value = Object.fromEntries(results)
+  const analyses = await Promise.all(selectedNodes.value.map(async node => {
+    try { return [node.id, await api.get('/admin/assets/nodes/' + node.id + '/analysis')] }
+    catch { return [node.id, { state: 'UNAVAILABLE', reason: 'Chưa tải được phân tích AI. Kiểm tra backend đã deploy bản mới.' }] }
+  }))
+  if (sequence === powerRequestId) {
+    powerStates.value = Object.fromEntries(results)
+    aiStates.value = Object.fromEntries(analyses)
+  }
 }
 const loading = ref(false)
 const error = ref('')
@@ -184,6 +192,8 @@ const metricStates = {
 }
 function metricState(node, key) {
   if (key === 'current') {
+    if (node.status !== 'ONLINE' || node.readings.find(r => r.metric === key)?.quality !== 'GOOD') return metricStates.unknown
+    if (aiStates.value[node.id]?.findings?.some(f => f.code === 'POWER_AFTER_USE')) return metricStates.warning
     const state = powerStates.value[node.id]?.state
     if (state === 'LOW' || state === 'IN_USE') return metricStates.stable
     if (state === 'AFTER_RETURN_CURRENT') return metricStates.warning
@@ -340,7 +350,7 @@ async function loadTelemetry() {
 }
 watch([chartNodeId, historyHours], loadTelemetry)
 watch(visibleNodes, ns => { if (!ns.some(n => String(n.id) === chartNodeId.value)) chartNodeId.value = String(ns[0]?.id || '') })
-watch(roomId, () => { powerStates.value = {}; loadPower() })
+watch(roomId, () => { powerStates.value = {}; aiStates.value = {}; loadPower() })
 const chartValues = computed(() => samples.value.map(s => ({ time: s.measuredAt || s.receivedAt, clockSynced: s.clockSynced, reading: s.readings.find(r => r.metric === metric.value && r.quality === 'GOOD') })).filter(s => s.reading && Number.isFinite(s.reading.value)))
 const chartRange = computed(() => {
   const values = chartValues.value.map(s => s.reading.value)
@@ -559,21 +569,35 @@ onUnmounted(() => { clearInterval(refreshTimer); requestId++; logRequestId++; te
                     </p>
                   </div>
                 </div>
-                <section class="iot-analysis mt-4 rounded-xl border border-blue-100 bg-blue-50/40 p-4 text-sm"
-                  aria-label="Kết quả phân tích AI">
+                <section class="iot-analysis mt-4 rounded-xl border p-4 text-sm"
+                  :class="aiStates[node.id]?.state === 'ANOMALY' ? 'border-amber-300 bg-amber-50' : 'border-blue-100 bg-blue-50/40'"
+                  aria-label="Kết quả phân tích AI" aria-live="polite">
                   <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-                    <h4 class="font-semibold text-ink">Kết quả phân tích AI</h4><span
-                      class="rounded-lg bg-white px-2 py-1 text-xs text-slate-500">Nhận định theo quy tắc</span>
+                    <h4 class="font-semibold text-ink">Phân tích AI</h4>
+                    <span class="rounded-lg bg-white px-2 py-1 text-xs text-slate-600">Random Forest · Mô hình thử nghiệm</span>
                   </div>
-                  <p class="font-semibold">Dòng điện tổng phòng · {{ borrowingLabel(node) }}</p>
-                  <p class="mt-1"
-                    :class="powerStates[node.id]?.state === 'AFTER_RETURN_CURRENT' ? 'text-amber-700' : 'text-slate-600'">{{
-                      powerLabels[powerStates[node.id]?.state] || powerLabels.UNKNOWN }}</p>
-                  <p v-if="powerStates[node.id] && !powerStates[node.id].isFresh && powerStates[node.id].currentAmperes != null"
-                    class="mt-1 text-xs text-slate-500">Giá trị cuối nhận được: {{ powerStates[node.id].currentAmperes
-                    }} A · {{ dateTime(powerStates[node.id].measuredAt) }}</p>
-                  <p class="mt-1 text-xs text-slate-500">Ngưỡng cảnh báo phải được cấu hình theo node sau hiệu chuẩn; cần chuỗi đo liên tục sau trả.
-                    Chưa xác định bật/tắt từng thiết bị hoặc có người trong phòng.</p>
+                  <p v-if="!aiStates[node.id]" class="text-slate-500">Đang phân tích số đo…</p>
+                  <p v-else-if="aiStates[node.id].state === 'UNAVAILABLE'" class="text-slate-500">{{ aiStates[node.id].reason }}</p>
+                  <template v-else>
+                    <div class="flex flex-wrap items-center gap-2">
+                      <strong :class="aiStates[node.id].state === 'ANOMALY' ? 'text-amber-800' : 'text-emerald-700'">{{ aiStates[node.id].summary }}</strong>
+                      <span v-if="aiStates[node.id].source === 'MOCK'" class="rounded bg-amber-100 px-2 py-1 text-xs text-amber-800">Dữ liệu mô phỏng</span>
+                    </div>
+                    <p class="mt-2 text-xs text-slate-600">
+                      Ngữ cảnh: {{ { IN_USE: 'Đang sử dụng', IDLE: 'Phòng nghỉ', AFTER_USE: 'Sau sử dụng' }[aiStates[node.id].usageContext] || 'Chưa xác định' }}
+                      · {{ dateTime(aiStates[node.id].measuredAt) }}
+                    </p>
+                    <div v-for="finding in aiStates[node.id].findings" :key="finding.code" class="mt-3 rounded-xl border bg-white p-3"
+                      :class="finding.severity === 'critical' ? 'border-red-200 text-red-800' : 'border-amber-200 text-amber-900'">
+                      <div class="flex flex-wrap items-center justify-between gap-2"><h5 class="font-semibold">{{ finding.title }}</h5><span class="text-xs">Điểm mô hình {{ finding.score }}/100</span></div>
+                      <p class="mt-1 text-sm">{{ finding.detail }}</p>
+                    </div>
+                    <details class="mt-3 text-xs text-slate-500"><summary class="cursor-pointer">Cơ sở phân tích</summary>
+                      <p class="mt-2">{{ aiStates[node.id].contextBasis }}</p>
+                      <p class="mt-1">{{ aiStates[node.id].limitation }}</p>
+                      <p class="mt-1">Phiên bản {{ aiStates[node.id].modelVersion }} · Mẫu #{{ aiStates[node.id].sampleId }}</p>
+                    </details>
+                  </template>
                 </section>
               </div>
               <div v-if="visibleNodes.length" class="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm">
