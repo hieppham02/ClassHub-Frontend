@@ -3,7 +3,7 @@
 - Mỗi tầng của mỗi tòa có một tủ tên **Tủ tự do**, nằm ở hành lang. Tủ ngoài đời lớn hơn; trên client dùng đồ họa hai cánh nhưng cùng kích thước với tủ phòng. Tên không kèm số thứ tự hoặc tầng.
 - Bổ sung **5 tủ phòng mới mỗi tầng**, giữ các tủ/phòng đang có. Tên theo mã tòa–số phòng, ví dụ DTD-501, TT-501, VNB-501, EAUT-501 (PLC dùng PLC). Số phòng mới nối tiếp số lớn nhất của các phòng mẫu tại tầng đó để không trùng tên; ví dụ đã có DTD-401 thì các tủ mới là DTD-402 đến DTD-406. Tủ có vị trí mượn và bản ghi cabinet riêng, dùng API/quy trình mượn hiện có.
 - Danh mục đồ dùng chung: ổ điện, cáp mạng LAN, phấn viết bảng.
-- Giữ quy trình đăng ký theo ngày/ca, OTP, mở tủ, ủy quyền và trả đồ hiện có; mỗi người vẫn chỉ có một phiếu chưa hoàn tất.
+- Đăng ký theo ngày/ca, quét QR, mở tủ, ủy quyền và trả đồ; mỗi người vẫn chỉ có một phiếu chưa hoàn tất.
 - Sinh viên bấm **Báo hỏng hóc** ở góc trên bên phải panel danh sách tủ, cạnh chú thích, chọn phòng/tủ, nhập thiết bị và mô tả rồi gửi. Có thể báo khi tủ ngoại tuyến/bảo trì, không cần đang mượn.
 - Admin xem ở **Quản lý tài sản → Tài sản**, chọn phòng hoặc tủ hành lang. Ba card Toàn bộ cảnh báo / Đã xử lý / Chưa xử lý lọc danh sách của vị trí được chọn; số trên card theo phạm vi tòa/tầng. Vị trí có báo cáo chưa xử lý được đánh dấu.
 - Tổng quan tài sản dùng biểu đồ tròn theo tình trạng, với card cảnh báo bên cạnh. Xử lý báo cáo yêu cầu ghi kết quả; không tự đổi tình trạng/tồn kho thiết bị.

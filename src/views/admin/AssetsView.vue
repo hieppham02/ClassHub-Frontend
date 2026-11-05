@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import AdminLayout from '@/components/admin/layout/AdminLayout.vue'
 import AdminPageTitle from '@/components/admin/layout/AdminPageTitle.vue'
 import AppModal from '@/components/shared/AppModal.vue'
+import OperationTelemetryPanel from '@/components/shared/OperationTelemetryPanel.vue'
+import DamageReportWorkflow from '@/components/shared/DamageReportWorkflow.vue'
 import TablePagination from '@/components/shared/TablePagination.vue'
 import { usePagination } from '@/composables/usePagination.js'
 import { api } from '@/services/apiClient.js'
@@ -57,9 +59,9 @@ const scopedReports = computed(() => {
 const reportCards = computed(() => [
   { label: 'Toàn bộ cảnh báo', key: '', count: scopedReports.value.length },
   { label: 'Đã xử lý', key: 'RESOLVED', count: scopedReports.value.filter(r => r.status === 'RESOLVED').length },
-  { label: 'Chưa xử lý', key: 'PENDING', count: scopedReports.value.filter(r => r.status === 'PENDING').length }
+  { label: 'Chưa xử lý', key: 'PENDING', count: scopedReports.value.filter(r => r.status !== 'RESOLVED').length }
 ])
-const roomReports = computed(() => damageReports.value.filter(r => r.roomId === roomId.value && (!reportFilter.value || r.status === reportFilter.value)))
+const roomReports = computed(() => damageReports.value.filter(r => r.roomId === roomId.value && (!reportFilter.value || (reportFilter.value === 'PENDING' ? r.status !== 'RESOLVED' : r.status === reportFilter.value))))
 const { page: reportPage, pageItems: reportPageItems, totalItems: reportTotal } = usePagination(roomReports, [roomId, reportFilter])
 async function resolveDamageReport() {
   if (busy.value) return
@@ -123,11 +125,15 @@ async function saveNode(node, event) {
 
 let powerRequestId = 0
 const powerLabels = {
+  AFTER_RETURN_CURRENT: 'Dòng điện còn cao sau trả — cần kiểm tra',
+  NOT_CONFIGURED: 'Chưa cấu hình ngưỡng dòng điện cho node này',
+  NO_RETURN_CONTEXT: 'Chưa có phiên trả hoàn tất để đối chiếu',
+  MOCK: 'Dữ liệu mô phỏng — không đưa ra cảnh báo thật',
   UNKNOWN: 'Đang tải số đo',
   NO_DATA: 'Chưa nhận được số đo dòng điện',
-  LOW: 'Tiêu thụ thấp (dưới 1A)',
+  LOW: 'Dòng điện dưới ngưỡng đã cấu hình',
   IN_USE: 'Có sử dụng điện trong thời gian mượn',
-  OBSERVING: 'Có sử dụng điện ngoài lịch — đang theo dõi',
+  OBSERVING: 'Dòng điện cao sau trả — đang theo dõi chuỗi đo',
   OUT_OF_SCHEDULE: 'Điện ngoài lịch kéo dài — kiểm tra thiết bị chưa tắt'
 }
 async function loadPower() {
@@ -153,7 +159,7 @@ const assetConditionClasses = {
   NGUNG_SU_DUNG: 'bg-slate-100 text-slate-600'
 }
 const actions = { CATALOG_CREATE: 'Thêm danh mục thiết bị', CATALOG_EDIT: 'Sửa danh mục thiết bị', CATALOG_DELETE: 'Xóa danh mục thiết bị', ADD_ROOM: 'Thêm thiết bị vào phòng', ROOM_QUANTITY: 'Thay đổi số lượng tại phòng', RECEIPT: 'Nhập kho', ALLOCATE: 'Phân bổ vào phòng', RETURN: 'Thu hồi về kho', TRANSFER: 'Điều chuyển phòng', CONDITION: 'Báo / đổi tình trạng', COUNT: 'Kiểm kê' }
-const metrics = [{ key: 'current', name: 'Dòng điện tổng phòng', unit: 'A' }, { key: 'temperature', name: 'Nhiệt độ', unit: '°C' }, { key: 'humidity', name: 'Độ ẩm', unit: '%' }, { key: 'airquality', name: 'Chất lượng không khí', unit: 'index' }]
+const metrics = [{ key: 'current', name: 'Dòng điện tổng phòng', unit: 'A' }, { key: 'temperature', name: 'Nhiệt độ', unit: '°C' }, { key: 'humidity', name: 'Độ ẩm', unit: '%' }, { key: 'airquality', name: 'Chỉ số không khí (node cũ)', unit: 'index' }, { key: 'co2', name: 'CO₂', unit: 'ppm' }, { key: 'light', name: 'Độ rọi', unit: 'lux' }]
 let refreshTimer
 let requestId = 0
 const selectedRoom = computed(() => rooms.value.find(r => r.id === roomId.value))
@@ -180,7 +186,7 @@ function metricState(node, key) {
   if (key === 'current') {
     const state = powerStates.value[node.id]?.state
     if (state === 'LOW' || state === 'IN_USE') return metricStates.stable
-    if (state === 'OUT_OF_SCHEDULE') return metricStates.warning
+    if (state === 'AFTER_RETURN_CURRENT') return metricStates.warning
     return { label: state === 'NO_DATA' ? 'Chưa có số đo' : 'Theo dõi tiêu thụ', classes: 'border-emerald-200 bg-emerald-50 text-emerald-700' }
   }
   return metricStates[demoStatuses.value.get(`${node.id}:${key}`) || 'unknown']
@@ -335,7 +341,7 @@ async function loadTelemetry() {
 watch([chartNodeId, historyHours], loadTelemetry)
 watch(visibleNodes, ns => { if (!ns.some(n => String(n.id) === chartNodeId.value)) chartNodeId.value = String(ns[0]?.id || '') })
 watch(roomId, () => { powerStates.value = {}; loadPower() })
-const chartValues = computed(() => samples.value.map(s => ({ time: s.measuredAt, reading: s.readings.find(r => r.metric === metric.value && r.quality !== 'BAD') })).filter(s => s.reading && Number.isFinite(s.reading.value)))
+const chartValues = computed(() => samples.value.map(s => ({ time: s.measuredAt || s.receivedAt, clockSynced: s.clockSynced, reading: s.readings.find(r => r.metric === metric.value && r.quality === 'GOOD') })).filter(s => s.reading && Number.isFinite(s.reading.value)))
 const chartRange = computed(() => {
   const values = chartValues.value.map(s => s.reading.value)
   const min = Math.min(...values), max = Math.max(...values)
@@ -353,9 +359,8 @@ onUnmounted(() => { clearInterval(refreshTimer); requestId++; logRequestId++; te
 
 <template>
   <AdminLayout>
-    <AppModal v-if="resolvingReport" title="Xử lý báo cáo hỏng hóc" :busy="busy" @close="resolvingReport = null">
-      <form id="resolve-report-form" @submit.prevent="resolveDamageReport"><p class="mb-3 text-sm">{{ resolvingReport.equipmentName }} · {{ roomName(resolvingReport.roomId) }}</p><label class="block text-sm font-semibold">Kết quả xử lý<textarea v-model="resolutionNote" required minlength="3" maxlength="1000" rows="4" class="modal-field mt-2 w-full" /></label><p v-if="error" class="mt-3 text-sm text-red-600">{{ error }}</p></form>
-      <template #footer><button class="modal-cancel" :disabled="busy" @click="resolvingReport = null">Hủy</button><button form="resolve-report-form" type="submit" class="modal-primary" :disabled="busy">{{ busy ? 'Đang lưu...' : 'Xác nhận đã xử lý' }}</button></template>
+    <AppModal v-if="resolvingReport" title="Xử lý sự cố thiết bị" :busy="busy" @close="resolvingReport = null">
+      <DamageReportWorkflow :key="resolvingReport.id" :report="resolvingReport" @busy="busy = $event" @saved="resolvingReport = null; refresh(true)" />
     </AppModal>
     <div class="w-full iot-workspace" :class="{ 'assets-workspace': tab === 'assets' || tab === 'warehouse' }">
       <header
@@ -380,6 +385,7 @@ onUnmounted(() => { clearInterval(refreshTimer); requestId++; logRequestId++; te
             :class="tab === item.id ? 'bg-white text-brand shadow-sm' : 'text-slate-500 hover:text-brand'"
             class="min-h-10 rounded-lg px-4 text-sm font-semibold">{{ item.name }}</button>
         </div>
+        <OperationTelemetryPanel v-if="tab === 'iot'" :room="roomId" />
         <section v-if="tab === 'iot'" class="iot-overview" aria-label="Thống kê node tổng quát">
           <div class="iot-overview-heading">
             <div>
@@ -447,7 +453,7 @@ onUnmounted(() => { clearInterval(refreshTimer); requestId++; logRequestId++; te
                 :class="roomId === r.id ? 'bg-blue-50 text-brand' : 'text-ink hover:bg-slate-50'"
                 class="block w-full border-b border-blue-50 px-4 py-3 text-left">
                 <span class="flex items-center justify-between gap-2">
-                  <span class="text-sm font-semibold">{{ r.name }}<span v-if="tab === 'assets' && damageReports.some(report => report.roomId === r.id && report.status === 'PENDING')" class="ml-2 text-xs text-red-600">● Báo hỏng</span></span>
+                  <span class="text-sm font-semibold">{{ r.name }}<span v-if="tab === 'assets' && damageReports.some(report => report.roomId === r.id && report.status !== 'RESOLVED')" class="ml-2 text-xs text-red-600">● Báo hỏng</span></span>
                   <span v-if="tab === 'iot'" class="iot-room-badge" :class="{ 'is-online': roomConnections[r.id]?.online }">
                     <span aria-hidden="true">●</span> {{ roomConnections[r.id]?.online || 0 }}/{{ roomConnections[r.id]?.total || 0 }} online
                   </span>
@@ -561,12 +567,12 @@ onUnmounted(() => { clearInterval(refreshTimer); requestId++; logRequestId++; te
                   </div>
                   <p class="font-semibold">Dòng điện tổng phòng · {{ borrowingLabel(node) }}</p>
                   <p class="mt-1"
-                    :class="powerStates[node.id]?.state === 'OUT_OF_SCHEDULE' ? 'text-amber-700' : 'text-slate-600'">{{
+                    :class="powerStates[node.id]?.state === 'AFTER_RETURN_CURRENT' ? 'text-amber-700' : 'text-slate-600'">{{
                       powerLabels[powerStates[node.id]?.state] || powerLabels.UNKNOWN }}</p>
                   <p v-if="powerStates[node.id] && !powerStates[node.id].isFresh && powerStates[node.id].currentAmperes != null"
                     class="mt-1 text-xs text-slate-500">Giá trị cuối nhận được: {{ powerStates[node.id].currentAmperes
                     }} A · {{ dateTime(powerStates[node.id].measuredAt) }}</p>
-                  <p class="mt-1 text-xs text-slate-500">Mốc tiêu thụ 1A; cảnh báo ngoài lịch sau 5 phút đo liên tục.
+                  <p class="mt-1 text-xs text-slate-500">Ngưỡng cảnh báo phải được cấu hình theo node sau hiệu chuẩn; cần chuỗi đo liên tục sau trả.
                     Chưa xác định bật/tắt từng thiết bị hoặc có người trong phòng.</p>
                 </section>
               </div>
@@ -718,11 +724,13 @@ onUnmounted(() => { clearInterval(refreshTimer); requestId++; logRequestId++; te
                 <h3 class="mb-2 text-sm font-semibold text-ink">Báo cáo hỏng hóc · {{ selectedRoom?.name || 'Chưa chọn vị trí' }}</h3>
                 <p class="mb-4 text-xs text-slate-500">{{ reportCards.find(c => c.key === reportFilter)?.label }} · {{ roomReports.length }} báo cáo tại vị trí này</p>
                 <article v-for="report in reportPageItems" :key="report.id" class="border-t border-slate-100 py-4">
-                  <div class="flex flex-wrap items-center justify-between gap-2"><strong class="text-sm">{{ report.equipmentName }}</strong><span class="rounded-full px-2 py-1 text-xs" :class="report.status === 'RESOLVED' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'">{{ report.status === 'RESOLVED' ? 'Đã xử lý' : 'Chưa xử lý' }}</span></div>
+                  <div class="flex flex-wrap items-center justify-between gap-2"><strong class="text-sm">{{ report.equipmentName }}</strong><span class="rounded-full px-2 py-1 text-xs" :class="report.status === 'RESOLVED' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'">{{ report.status === 'RESOLVED' ? 'Đã xử lý' : report.status === 'IN_PROGRESS' ? 'Đang xử lý' : 'Chờ xử lý' }}</span></div>
                   <p class="mt-2 whitespace-pre-wrap break-words text-sm text-slate-600">{{ report.description }}</p>
                   <p class="mt-2 text-xs text-slate-400">{{ report.reporterId }} · {{ dateTime(report.createdAt) }}</p>
                   <p v-if="report.status === 'RESOLVED'" class="mt-2 whitespace-pre-wrap text-sm text-emerald-700">Kết quả: {{ report.resolutionNote }} · {{ dateTime(report.resolvedAt) }}</p>
-                  <button v-else class="mt-3 text-sm font-semibold text-brand" :disabled="busy" @click="resolvingReport = report; resolutionNote = ''">Đánh dấu đã xử lý</button>
+                  <p v-if="report.assigneeId" class="mt-1 text-xs">Phụ trách: {{ report.assigneeId }}</p>
+                  <p v-if="report.allocationBlocked" class="mt-1 text-xs text-red-700">Đang chặn cấp phát</p>
+                  <button class="mt-3 text-sm font-semibold text-brand" :disabled="busy" @click="resolvingReport = report">Phân công / Cập nhật xử lý</button>
                 </article>
                 <p v-if="!roomReports.length" class="py-4 text-sm text-slate-400">Không có báo cáo phù hợp tại vị trí này.</p>
                 <TablePagination v-model:page="reportPage" :total-items="reportTotal" />

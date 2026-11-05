@@ -30,3 +30,8 @@ dist-ssr
 # Environment variables
 .env.local
 .env.*.local
+
+.cert/
+
+# Local preparation artifacts
+.codex-temp/

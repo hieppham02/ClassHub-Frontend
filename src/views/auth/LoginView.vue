@@ -162,7 +162,7 @@ async function login() {
                   v-model="msv" 
                   type="text" 
                   required 
-                  placeholder="VD: 20231206 hoặc email trường"
+                  placeholder="Mã sinh viên hoặc email trường"
                   class="h-12 w-full rounded-2xl border border-blue-100 bg-white/80 pl-11 pr-4 text-sm text-slate-800 placeholder-slate-400 outline-none transition duration-200 focus:border-brand focus:bg-white focus:ring-4 focus:ring-blue-500/20 shadow-sm"
                 />
               </div>

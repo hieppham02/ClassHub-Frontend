@@ -2,6 +2,8 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { api } from '@/services/apiClient.js'
 import TablePagination from '@/components/shared/TablePagination.vue'
+import ReturnInspectionPanel from '@/components/shared/ReturnInspectionPanel.vue'
+import RfidTagsPanel from '@/components/shared/RfidTagsPanel.vue'
 import { usePagination } from '@/composables/usePagination.js'
 const props = defineProps({ admin: Boolean })
 const alerts = ref([])
@@ -12,8 +14,6 @@ const error = ref('')
 const busy = ref(false)
 const showEquipment = ref(false)
 const review = ref(null)
-const condition = ref('BINH_THUONG')
-const note = ref('')
 let timer
 async function refresh() {
   try { alerts.value = await api.get('/operations/alerts'); error.value = '' }
@@ -35,17 +35,6 @@ async function save(item) {
 }
 function openReview(alert) {
   review.value = alert
-  condition.value = alert.condition || 'BINH_THUONG'
-  note.value = alert.note || ''
-}
-async function confirm() {
-  busy.value = true
-  try {
-    await api.post(`/operations/sessions/${review.value.sessionId}/confirm-return`, { condition: condition.value, note: note.value })
-    review.value = null
-    await refresh()
-  } catch (err) { error.value = err.message }
-  finally { busy.value = false }
 }
 onMounted(() => { refresh(); timer = setInterval(refresh, 30000) })
 onUnmounted(() => clearInterval(timer))
@@ -72,14 +61,9 @@ onUnmounted(() => clearInterval(timer))
       </li>
     </ul>
     <TablePagination v-if="admin" v-model:page="alertPage" :total-items="alertTotal" :disabled="busy" label="cảnh báo" />
-    <div v-if="review" class="mt-4 space-y-3 rounded-xl border border-blue-100 p-4">
-      <p class="font-semibold">Kiểm tra thực tế phiếu #{{ review.sessionId }} trước khi xác nhận.</p>
-      <select v-model="condition" class="min-h-11 w-full rounded-lg border border-slate-200 px-3">
-        <option value="BINH_THUONG">Đã trả đủ, bình thường</option><option value="HONG_HOC">Đã trả đủ, có hỏng hóc</option><option value="MAT_DO">Thiếu đồ, giữ phiếu chờ xử lý</option>
-      </select>
-      <textarea v-model="note" maxlength="2000" placeholder="Mô tả thiết bị hỏng/thiếu hoặc ghi chú kiểm tra" class="w-full rounded-lg border border-slate-200 p-3" />
-      <button :disabled="busy" @click="confirm" class="min-h-11 rounded-xl bg-brand px-4 text-white disabled:opacity-50">Xác nhận kết quả kiểm tra</button>
-      <button :disabled="busy" @click="review = null" class="ml-3 min-h-11 px-3">Hủy</button>
+    <div v-if="review" class="mt-4">
+      <ReturnInspectionPanel :key="review.sessionId" :session-id="review.sessionId" admin @confirmed="review = null; refresh()" />
+      <button @click="review = null" class="min-h-11 px-3 text-sm">Đóng kiểm tra</button>
     </div>
     <div v-if="showEquipment" class="mt-4 space-y-3">
       <p class="text-xs text-slate-500">Danh mục hiện tại của phòng; chưa phải danh sách bàn giao theo từng phiếu.</p>
@@ -89,6 +73,7 @@ onUnmounted(() => clearInterval(timer))
         <label class="text-sm">Tình trạng<select v-model="item.condition" class="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-3"><option value="TOT">Tốt</option><option value="HONG">Hỏng</option><option value="DANG_BAO_TRI">Đang bảo trì</option></select></label>
         <input v-model="item.note" maxlength="255" aria-label="Ghi chú thiết bị" placeholder="Ghi chú" class="min-h-11 rounded-lg border border-slate-200 px-3" />
         <button :disabled="busy" @click="save(item)" class="min-h-11 rounded-xl bg-brand px-4 text-white disabled:opacity-50">Lưu thiết bị</button>
+        <RfidTagsPanel :equipment="item" />
       </div>
       <TablePagination v-if="admin" v-model:page="equipmentPage" :total-items="equipmentTotal" :disabled="busy" label="thiết bị" />
     </div>

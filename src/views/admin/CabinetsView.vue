@@ -3,6 +3,7 @@ import AppModal from '@/components/shared/AppModal.vue'
 import AdminLayout from '@/components/admin/layout/AdminLayout.vue'
 import AdminPageTitle from '@/components/admin/layout/AdminPageTitle.vue'
 import TablePagination from '@/components/shared/TablePagination.vue'
+import CabinetHealthCard from '@/components/shared/CabinetHealthCard.vue'
 import { usePagination } from '@/composables/usePagination.js'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { api } from '@/services/apiClient.js'
@@ -14,6 +15,33 @@ const doorFilter = ref('Tình trạng cửa')
 const networkFilter = ref('Kết nối')
 const isLoading = ref(false)
 const cabinets = ref([])
+const pendingCommands = ref({})
+const commandTimers = new Map()
+
+function clearPendingCommand(id) {
+  clearTimeout(commandTimers.get(id))
+  commandTimers.delete(id)
+  delete pendingCommands.value[id]
+}
+
+async function sendRemoteCommand(cab, open) {
+  if (pendingCommands.value[cab.id] !== undefined) return
+  pendingCommands.value[cab.id] = open
+  commandTimers.set(cab.id, setTimeout(() => {
+    clearPendingCommand(cab.id)
+    showToastMessage(`Chưa nhận được xác nhận từ ${cab.name}. Hãy kiểm tra tủ trước khi gửi lại lệnh.`, 'warning')
+    void fetchCabinets()
+  }, 20000))
+  try {
+    const data = await api.post(`/admin/cabinets/remote-${open ? 'open' : 'lock'}/${cab.id}`)
+    if (pendingCommands.value[cab.id] !== undefined) {
+      showToastMessage(data?.message || 'Đã gửi lệnh. Đang chờ tủ xác nhận.', 'warning')
+    }
+  } catch (err) {
+    clearPendingCommand(cab.id)
+    throw err
+  }
+}
 
 let unsubscribeCabinetStatus = null
 
@@ -48,9 +76,15 @@ onMounted(async () => {
       target.isDoorOpen = data.isOpen
       target.isOnline = data.isOnline ?? true
 
+      if (data.health !== undefined) target.health = data.health
       if (data.status) target.status = data.status
       if (data.borrower !== undefined) target.borrower = data.borrower
       if (data.lastOnline) target.lastOnline = data.lastOnline
+      const expectedOpen = pendingCommands.value[target.id]
+      if (expectedOpen !== undefined && data.isOnline !== false && data.lockStatus === (expectedOpen ? 'UNLOCKED' : 'LOCKED')) {
+        clearPendingCommand(target.id)
+        showToastMessage(`${target.name} đã xác nhận ${expectedOpen ? 'mở' : 'khóa'} chốt.`, 'success')
+      }
     }
   })
 
@@ -64,6 +98,9 @@ onMounted(async () => {
 
 onUnmounted(() => {
   if (unsubscribeCabinetStatus) unsubscribeCabinetStatus()
+  commandTimers.forEach(clearTimeout)
+  commandTimers.clear()
+  clearTimeout(toast.value.timer)
 })
 
 const confirmModal = ref({
@@ -102,7 +139,7 @@ function closeConfirmModal() {
 }
 
 async function executeModalAction() {
-  if (!confirmModal.value.onConfirm) return
+  if (confirmModal.value.isProcessing || !confirmModal.value.onConfirm) return
   confirmModal.value.isProcessing = true
   try {
     await confirmModal.value.onConfirm()
@@ -116,6 +153,7 @@ async function executeModalAction() {
 
 // Mở khóa khẩn cấp từ xa
 function handleRemoteOpen(cab) {
+  if (pendingCommands.value[cab.id] !== undefined) return
   if (!cab.isOnline) {
     showToastMessage('Tủ đang OFFLINE, không thể mở từ xa!', 'warning')
     return
@@ -134,16 +172,18 @@ function handleRemoteOpen(cab) {
     confirmVariant: 'primary',
     isProcessing: false,
     onConfirm: async () => {
-      await api.post(`/admin/cabinets/remote-open/${cab.id}`)
-      cab.doorCondition = 'Mở'
-      cab.isDoorOpen = true
-      showToastMessage(`Đã gửi lệnh mở khóa cho ${cab.name} thành công!`, 'success')
+      await sendRemoteCommand(cab, true)
     }
   }
 }
 
 // Khóa tủ từ xa
 function handleRemoteLock(cab) {
+  if (pendingCommands.value[cab.id] !== undefined) return
+  if (!cab.isOnline || cab.status === 'Bảo trì') {
+    showToastMessage('Tủ đang offline hoặc bảo trì, không thể khóa từ xa!', 'warning')
+    return
+  }
   confirmModal.value = {
     show: true,
     title: 'Khóa chốt tủ từ xa',
@@ -153,10 +193,7 @@ function handleRemoteLock(cab) {
     confirmVariant: 'warning',
     isProcessing: false,
     onConfirm: async () => {
-      await api.post(`/admin/cabinets/remote-lock/${cab.id}`)
-      cab.doorCondition = 'Đóng'
-      cab.isDoorOpen = false
-      showToastMessage(`Đã gửi lệnh khóa chốt cho ${cab.name}!`, 'success')
+      await sendRemoteCommand(cab, false)
     }
   }
 }
@@ -174,10 +211,12 @@ function handleToggleMaintenance(cab) {
       : `Đưa ${cab.name} vào chế độ bảo trì. Sinh viên/giảng viên sẽ không thể đăng ký mượn tủ này.`,
     cabName: cab.name,
     actionLabel: isMaintenance ? 'Khôi phục' : 'Bật bảo trì',
+    maintenance: true, requiresReadiness: isMaintenance, verifiedReady: false, note: '',
     confirmVariant: isMaintenance ? 'primary' : 'danger',
     isProcessing: false,
     onConfirm: async () => {
-      const data = await api.patch(`/admin/cabinets/${cab.id}/toggle-maintenance`)
+      if (confirmModal.value.note.trim().length < 3 || isMaintenance && !confirmModal.value.verifiedReady) throw new Error('Ghi kết quả kiểm tra và xác nhận sẵn sàng trước khi khôi phục.');
+      const data = await api.patch(`/admin/cabinets/${cab.id}/toggle-maintenance`, { note: confirmModal.value.note.trim(), verifiedReady: confirmModal.value.verifiedReady })
       cab.status = data?.status || (isMaintenance ? 'Trống' : 'Bảo trì')
       showToastMessage(`Đã cập nhật trạng thái của ${cab.name} thành công!`, 'success')
     }
@@ -323,7 +362,7 @@ const { page, pageItems: pagedCabinets, totalItems } = usePagination(filteredCab
                           :class="cab.isOnline ? 'bg-emerald-500' : 'bg-slate-300'"></span>
                         <div>
                           <p class="font-bold text-slate-900">{{ cab.name }}</p>
-                          <p class="text-[11px] text-slate-400 font-normal">Topic: {{ cab.mqttTopic }}</p>
+                          <CabinetHealthCard :value="cab.health" :online="cab.isOnline" />
                         </div>
                       </div>
                     </td>
@@ -357,7 +396,7 @@ const { page, pageItems: pagedCabinets, totalItems } = usePagination(filteredCab
                         ? 'bg-amber-100 text-amber-800 border border-amber-300 shadow-sm animate-pulse'
                         : 'bg-emerald-50 text-emerald-700 border border-emerald-200'"
                         class="inline-flex items-center justify-center gap-1 rounded-lg px-3 py-1 text-xs font-bold">
-                        <span>{{ cab.doorCondition === 'Mở' ? 'Mở' : 'Đóng' }}</span>
+                        <span>{{ cab.doorCondition || 'Chưa có dữ liệu cảm biến' }}</span>
                       </span>
                     </td>
 
@@ -372,7 +411,8 @@ const { page, pageItems: pagedCabinets, totalItems } = usePagination(filteredCab
                     <td class="px-5 py-4 text-center whitespace-nowrap">
                       <div class="flex items-center justify-center gap-2">
                         <!-- Nút Mở / Khóa cửa tủ -->
-                        <button v-if="cab.doorCondition === 'Đóng'" @click="handleRemoteOpen(cab)"
+                        <span v-if="pendingCommands[cab.id] !== undefined" class="text-xs text-amber-700" role="status">Đang chờ tủ xác nhận...</span>
+                        <button v-else-if="cab.doorCondition === 'Đóng'" @click="handleRemoteOpen(cab)"
                           class="rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-600 hover:bg-blue-600 hover:text-white active:scale-95 transition border border-blue-200"
                           title="Mở tủ khẩn cấp từ xa">
                           Mở tủ
@@ -419,6 +459,7 @@ const { page, pageItems: pagedCabinets, totalItems } = usePagination(filteredCab
     <AppModal v-if="confirmModal.show" :title="confirmModal.title" size="md" :busy="confirmModal.isProcessing"
       @close="closeConfirmModal">
       <p class="text-sm leading-relaxed text-slate-500">{{ confirmModal.message }}</p>
+      <div v-if="confirmModal.maintenance" class="mt-3 space-y-3"><label class="block text-sm">Lý do / kết quả kiểm tra<textarea v-model="confirmModal.note" maxlength="1000" class="modal-field mt-1 w-full" /></label><label v-if="confirmModal.requiresReadiness" class="flex gap-2 text-sm"><input v-model="confirmModal.verifiedReady" type="checkbox" />Đã kiểm tra thiết bị và cửa, sẵn sàng cấp phát lại.</label></div>
       <div
         class="mt-4 flex items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50/40 p-3 text-sm">
         <span class="text-slate-500">Tủ tác động</span><span class="font-semibold text-ink">{{ confirmModal.cabName

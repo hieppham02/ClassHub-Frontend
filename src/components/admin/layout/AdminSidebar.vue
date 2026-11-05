@@ -59,6 +59,11 @@ const menuItems = [
   }
 ]
 
+menuItems.push({
+  label: 'Pin micro', href: '/admin/batteries',
+  icon: '<path stroke-linecap="round" stroke-linejoin="round" d="M9 4h6v2h4v16H5V6h4V4zm0 8h6m-3-3v6" />'
+})
+
 // 3 mục chính trên bottom bar
 const primaryMobileTabs = [
   menuItems[0], // Tổng quan
@@ -72,6 +77,7 @@ const secondaryMobileTabs = [
   menuItems[2], // Tài khoản
   menuItems[3], // Tòa nhà & Phòng
   menuItems[5], // Thống kê
+  menuItems[8], // Pin micro
   menuItems[7]  // Trang người dùng
 ]
 
