@@ -8,6 +8,7 @@ import { usePagination } from '@/composables/usePagination.js'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { api } from '@/services/apiClient.js'
 import { cabinetHub } from '@/services/cabinetHub.js'
+import { normalizeCabinet, updateCabinet } from '@/utils/cabinetDisplay.js'
 
 const search = ref('')
 const statusFilter = ref('Trạng thái tủ')
@@ -50,7 +51,7 @@ async function fetchCabinets() {
   isLoading.value = true
 
   try {
-    cabinets.value = await api.get('/admin/cabinets')
+    cabinets.value = (await api.get('/admin/cabinets')).map(normalizeCabinet)
   } catch (err) {
     console.error('Lỗi tải danh sách tủ:', err)
   } finally {
@@ -72,14 +73,7 @@ onMounted(async () => {
 
     if (target) {
       // Cập nhật trực tiếp trên RAM, Vue tự động re-render UI tức thì (0% tốn băng thông)
-      target.doorCondition = data.doorCondition || (data.isOpen ? 'Mở' : 'Đóng')
-      target.isDoorOpen = data.isOpen
-      target.isOnline = data.isOnline ?? true
-
-      if (data.health !== undefined) target.health = data.health
-      if (data.status) target.status = data.status
-      if (data.borrower !== undefined) target.borrower = data.borrower
-      if (data.lastOnline) target.lastOnline = data.lastOnline
+      updateCabinet(target, data)
       const expectedOpen = pendingCommands.value[target.id]
       if (expectedOpen !== undefined && data.isOnline !== false && data.lockStatus === (expectedOpen ? 'UNLOCKED' : 'LOCKED')) {
         clearPendingCommand(target.id)
@@ -362,7 +356,7 @@ const { page, pageItems: pagedCabinets, totalItems } = usePagination(filteredCab
                           :class="cab.isOnline ? 'bg-emerald-500' : 'bg-slate-300'"></span>
                         <div>
                           <p class="font-bold text-slate-900">{{ cab.name }}</p>
-                          <CabinetHealthCard :value="cab.health" :online="cab.isOnline" />
+                          <CabinetHealthCard :value="cab.health" :online="cab.isOnline" :name="cab.name" />
                         </div>
                       </div>
                     </td>
@@ -396,7 +390,7 @@ const { page, pageItems: pagedCabinets, totalItems } = usePagination(filteredCab
                         ? 'bg-amber-100 text-amber-800 border border-amber-300 shadow-sm animate-pulse'
                         : 'bg-emerald-50 text-emerald-700 border border-emerald-200'"
                         class="inline-flex items-center justify-center gap-1 rounded-lg px-3 py-1 text-xs font-bold">
-                        <span>{{ cab.doorCondition || 'Chưa có dữ liệu cảm biến' }}</span>
+                        <span>{{ cab.doorCondition || 'Đóng' }}</span>
                       </span>
                     </td>
 
@@ -412,7 +406,7 @@ const { page, pageItems: pagedCabinets, totalItems } = usePagination(filteredCab
                       <div class="flex items-center justify-center gap-2">
                         <!-- Nút Mở / Khóa cửa tủ -->
                         <span v-if="pendingCommands[cab.id] !== undefined" class="text-xs text-amber-700" role="status">Đang chờ tủ xác nhận...</span>
-                        <button v-else-if="cab.doorCondition === 'Đóng'" @click="handleRemoteOpen(cab)"
+                        <button v-else-if="cab.lockStatus !== 'UNLOCKED'" @click="handleRemoteOpen(cab)"
                           class="rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-600 hover:bg-blue-600 hover:text-white active:scale-95 transition border border-blue-200"
                           title="Mở tủ khẩn cấp từ xa">
                           Mở tủ
