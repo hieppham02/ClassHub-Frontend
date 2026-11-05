@@ -3,7 +3,6 @@ import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import AppModal from '@/components/shared/AppModal.vue'
 import ReturnInspectionPanel from '@/components/shared/ReturnInspectionPanel.vue'
 import RfidLivePanel from '@/components/shared/RfidLivePanel.vue'
-import SessionProgressPanel from '@/components/shared/SessionProgressPanel.vue'
 import { api } from '@/services/apiClient.js'
 
 const props = defineProps({ session: { type: Object, required: true } })
@@ -32,6 +31,7 @@ const phaseLabels = {
   RETURN_CHECK: 'Cửa đã đóng. Đang chụp ảnh hộc và chờ quản trị viên xác minh trả đồ.',
   RETURN_FAILED: 'Có thiết bị hoặc bằng chứng cần kiểm tra. Xem kết quả xác minh và liên hệ quản trị viên.'
 }
+const checkingReturn = computed(() => props.session.status === 'RETURNING' && ['RETURN_CHECK', 'RETURN_FAILED'].includes(props.session.qrPhase))
 const waitingCommand = computed(() => (props.session.qrPhase || '').endsWith('_OPEN_REQUESTED'))
 const mayScan = computed(() => ['PENDING', 'RETURNING'].includes(props.session.status) && !props.session.isCabinetOpen && !waitingCommand.value && !['RETURN_CHECK', 'RECEIVE_UNLOCKED', 'RETURN_UNLOCKED'].includes(props.session.qrPhase))
 let controls = null
@@ -135,11 +135,10 @@ onUnmounted(stopCamera)
 </script>
 
 <template>
-  <SessionProgressPanel :key="session.id" :session-id="session.id" />
-  <ReturnInspectionPanel v-if="session.status === 'RETURNING' && ['RETURN_CHECK', 'RETURN_FAILED'].includes(session.qrPhase)" :session-id="session.id" />
+  <ReturnInspectionPanel v-if="checkingReturn" :key="session.id" :session-id="session.id" compact />
   <section class="space-y-4">
-    <h3 class="text-sm font-bold text-ink">{{ session.status === 'RETURNING' ? 'Trả đồ bằng QR' : 'Nhận đồ bằng QR' }}</h3>
-    <p class="rounded-xl bg-blue-50 p-3 text-sm text-slate-700" aria-live="polite">{{ phaseLabels[session.qrPhase] || 'Quét QR trên màn hình tủ để xác nhận mở cửa.' }}</p>
+    <h3 v-if="!checkingReturn" class="text-sm font-bold text-ink">{{ session.status === 'RETURNING' ? 'Trả đồ bằng QR' : 'Nhận đồ bằng QR' }}</h3>
+    <p v-if="!checkingReturn" class="rounded-xl bg-blue-50 p-3 text-sm text-slate-700" aria-live="polite">{{ phaseLabels[session.qrPhase] || 'Quét QR trên màn hình tủ để xác nhận mở cửa.' }}</p>
     <RfidLivePanel v-if="['RECEIVE_OPEN', 'RETURN_OPEN'].includes(session.qrPhase)" :session-id="session.id" />
     <p v-if="notice" class="text-sm text-emerald-700" role="status">{{ notice }}</p>
     <p v-if="error && !showScanner" class="text-sm text-red-600" role="alert">{{ error }}</p>

@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { api } from '@/services/apiClient.js'
 import RfidSummary from './RfidSummary.vue'
-const props = defineProps({ sessionId: { type: Number, required: true }, admin: Boolean })
+const props = defineProps({ sessionId: { type: Number, required: true }, admin: Boolean, compact: Boolean })
 const emit = defineEmits(['confirmed'])
 const evidence = ref(null), error = ref(''), busy = ref(false), loading = ref(false)
 const condition = ref('BINH_THUONG'), note = ref(''), counts = ref({})
@@ -54,6 +54,15 @@ onUnmounted(() => { stopped = true; clearInterval(timer) })
 
 <template>
   <section class="my-4 space-y-3 rounded-xl border border-blue-100 bg-white p-4">
+    <template v-if="compact">
+      <h3 class="font-semibold text-slate-900">Kiểm tra thiết bị</h3>
+      <p v-if="error" role="alert" class="text-sm text-red-600">{{ error }}</p>
+      <div v-else role="status" aria-live="polite" class="rounded-lg px-3 py-3 text-sm"
+        :class="inspection?.status === 'PASS' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'">
+        {{ !evidence ? 'Đang tải trạng thái kiểm tra…' : !inspection ? 'Đang kiểm tra thiết bị…' : inspection.status === 'PASS' ? 'AI đề xuất đủ thiết bị · Chờ xác nhận trả' : 'Cần kiểm tra lại thiết bị · Chờ quản trị viên xử lý' }}
+      </div>
+    </template>
+    <template v-else>
     <h3 class="font-semibold">Xác minh trả đồ · Phiếu #{{ sessionId }}</h3>
     <p class="text-sm text-slate-600">Ảnh trong hộc được đối chiếu với danh sách của phiên trả. Phiếu chỉ hoàn tất sau khi quản trị viên xác nhận.</p>
     <p v-if="error" role="alert" class="text-sm text-red-600">{{ error }}</p>
@@ -97,6 +106,7 @@ onUnmounted(() => { stopped = true; clearInterval(timer) })
         <label class="flex items-start gap-2 text-sm"><input v-model="acknowledged" :disabled="busy" type="checkbox" class="mt-1" /><span>{{ inspection?.imageDataUrl ? 'Tôi đã đối chiếu ảnh mới nhất và kiểm tra danh sách thiết bị; kết quả AI chỉ hỗ trợ việc xác nhận.' : 'Không có ảnh hộc. Tôi đã trực tiếp kiểm tra bên trong hộc và đối chiếu danh sách thiết bị.' }}</span></label>
         <button :disabled="busy || !canConfirm" @click="confirm" class="min-h-11 rounded-xl bg-brand px-4 text-white disabled:opacity-50">{{ condition === 'MAT_DO' ? 'Ghi nhận thiếu đồ' : 'Xác nhận trả đồ' }}</button>
       </div>
+    </template>
     </template>
   </section>
 </template>
