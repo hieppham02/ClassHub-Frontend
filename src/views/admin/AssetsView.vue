@@ -87,7 +87,7 @@ const assetPieStyle = computed(() => {
 const equipment = ref([])
 const nodes = ref([])
 const nodeFilter = ref('')
-function matchesNodeFilter(node) { return !nodeFilter.value || (nodeFilter.value === 'ACTIVE' ? node.status !== 'DISABLED' : node.status === nodeFilter.value) }
+function matchesNodeFilter(node) { if (nodeFilter.value === 'WARNING') return node.needsAttention === true; return !nodeFilter.value || (nodeFilter.value === 'ACTIVE' ? node.status !== 'DISABLED' : node.status === nodeFilter.value) }
 const powerStates = ref({})
 const aiStates = ref({})
 const statisticsNodes = computed(() => {
@@ -100,6 +100,7 @@ const nodeSegments = computed(() => [
   { key: '', label: 'Tất cả phòng', count: rooms.value.filter(r => r.locationType !== 'CORRIDOR' && (!building.value || r.buildingId === building.value) && (!floor.value || String(r.floor) === floor.value)).length, unit: 'phòng', color: '#0969c7' },
   { key: 'ONLINE', label: 'Trực tuyến', count: nodeTotals.value.online, unit: 'node', color: '#059669' },
   { key: 'OFFLINE', label: 'Ngoại tuyến', count: nodeTotals.value.offline, unit: 'node', color: '#64748b' },
+  { key: 'WARNING', label: 'Cảnh báo', count: statisticsNodes.value.filter(n => n.needsAttention === true).length, unit: 'node', color: '#dc2626' },
   { key: 'DISABLED', label: 'Bảo trì', count: nodeTotals.value.maintenance, unit: 'node', color: '#d97706' }
 ])
 const roomConnections = computed(() => Object.fromEntries(rooms.value.map(room => {
@@ -129,7 +130,7 @@ const powerLabels = {
   AFTER_RETURN_CURRENT: 'Dòng điện còn cao sau trả — cần kiểm tra',
   NOT_CONFIGURED: 'Chưa cấu hình ngưỡng dòng điện cho node này',
   NO_RETURN_CONTEXT: 'Chưa có phiên trả hoàn tất để đối chiếu',
-  MOCK: 'Dữ liệu mô phỏng — không đưa ra cảnh báo thật',
+  MOCK: 'Nguồn dữ liệu: bộ phát MQTT',
   UNKNOWN: 'Đang tải số đo',
   NO_DATA: 'Chưa nhận được số đo dòng điện',
   LOW: 'Dòng điện dưới ngưỡng đã cấu hình',
@@ -418,6 +419,9 @@ onUnmounted(() => { clearInterval(refreshTimer); requestId++; logRequestId++; te
             </div>
           </div>
         </section>
+        <p v-if="tab === 'iot' && nodeFilter === 'WARNING'" class="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          Các phòng có node cần chú ý: nhiệt độ cao, độ ẩm cao hoặc AI phát hiện còn tải điện sau sử dụng. Chọn phòng bên dưới để xem chi tiết.
+        </p>
         <section v-if="tab === 'assets'" class="iot-overview" aria-label="Thống kê tài sản tổng quát">
           <div class="iot-overview-heading">
             <h2 class="text-sm font-semibold text-ink">Tổng quan tài sản</h2>
@@ -453,6 +457,7 @@ onUnmounted(() => { clearInterval(refreshTimer); requestId++; logRequestId++; te
                   class="h-11 w-full rounded-xl border border-blue-100 bg-white px-3 text-sm">
                   <option value="">Tất cả tình trạng</option>
                   <option value="ACTIVE">Đang hoạt động</option>
+                  <option value="WARNING">Cảnh báo</option>
                   <option value="ONLINE">Trực tuyến</option>
                   <option value="OFFLINE">Ngoại tuyến</option>
                   <option value="DISABLED">Đang bảo trì</option>
@@ -574,14 +579,13 @@ onUnmounted(() => { clearInterval(refreshTimer); requestId++; logRequestId++; te
                   aria-label="Kết quả phân tích AI" aria-live="polite">
                   <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <h4 class="font-semibold text-ink">Phân tích AI</h4>
-                    <span class="rounded-lg bg-white px-2 py-1 text-xs text-slate-600">Random Forest · Mô hình thử nghiệm</span>
+                    <span class="rounded-lg bg-white px-2 py-1 text-xs text-slate-600">Random Forest</span>
                   </div>
                   <p v-if="!aiStates[node.id]" class="text-slate-500">Đang phân tích số đo…</p>
                   <p v-else-if="aiStates[node.id].state === 'UNAVAILABLE'" class="text-slate-500">{{ aiStates[node.id].reason }}</p>
                   <template v-else>
                     <div class="flex flex-wrap items-center gap-2">
                       <strong :class="aiStates[node.id].state === 'ANOMALY' ? 'text-amber-800' : 'text-emerald-700'">{{ aiStates[node.id].summary }}</strong>
-                      <span v-if="aiStates[node.id].source === 'MOCK'" class="rounded bg-amber-100 px-2 py-1 text-xs text-amber-800">Dữ liệu mô phỏng</span>
                     </div>
                     <p class="mt-2 text-xs text-slate-600">
                       Ngữ cảnh: {{ { IN_USE: 'Đang sử dụng', IDLE: 'Phòng nghỉ', AFTER_USE: 'Sau sử dụng' }[aiStates[node.id].usageContext] || 'Chưa xác định' }}
@@ -593,8 +597,8 @@ onUnmounted(() => { clearInterval(refreshTimer); requestId++; logRequestId++; te
                       <p class="mt-1 text-sm">{{ finding.detail }}</p>
                     </div>
                     <details class="mt-3 text-xs text-slate-500"><summary class="cursor-pointer">Cơ sở phân tích</summary>
-                      <p class="mt-2">{{ aiStates[node.id].contextBasis }}</p>
-                      <p class="mt-1">{{ aiStates[node.id].limitation }}</p>
+                      <p class="mt-2">{{ aiStates[node.id].source === 'MOCK' ? 'Nguồn số đo và ngữ cảnh: bộ phát dữ liệu MQTT, không phải cảm biến tại phòng.' : aiStates[node.id].contextBasis }}</p>
+                      <p class="mt-1">Mô hình học từ dữ liệu tổng hợp, chưa xác thực bằng số đo thực địa. Điểm mô hình không phải xác suất sự cố thực tế.</p>
                       <p class="mt-1">Phiên bản {{ aiStates[node.id].modelVersion }} · Mẫu #{{ aiStates[node.id].sampleId }}</p>
                     </details>
                   </template>
@@ -1022,7 +1026,7 @@ onUnmounted(() => { clearInterval(refreshTimer); requestId++; logRequestId++; te
 .panel-stack > .iot-overview { margin-bottom: 0; }
 .iot-eyebrow { color: #64748b; font-size: 10px; font-weight: 700; letter-spacing: .12em; }
 .iot-overview-detail { min-width: 0; }
-.iot-status-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.iot-status-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
 .iot-status-tile { display: grid; gap: 6px; padding: 12px 14px; border: 1px solid #edf1f5; border-radius: 12px; background: #f8fafc; text-align: left; transition: background .15s, border-color .15s; }
 .iot-status-tile:hover, .iot-status-tile[aria-pressed="true"] { border-color: #93c5fd; background: #eff6ff; }
 .iot-status-label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #475569; }

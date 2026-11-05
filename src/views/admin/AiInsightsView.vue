@@ -100,7 +100,7 @@ onMounted(() => { loadModel();loadForecasts();loadRooms();predict() })
       </div>
       <template v-if="tab==='battery'">
         <section class="ai-panel">
-          <div class="flex flex-wrap items-center justify-between gap-3"><div><h2 class="font-bold text-slate-900">Dự báo thời điểm kiểm tra / thay pin</h2><p class="mt-1 text-sm text-slate-500">Gradient Boosting Regression · {{ model?.metadata?.sampleCount || '—' }} mẫu huấn luyện và đánh giá</p></div><span class="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">Mô hình thử nghiệm · Dữ liệu tổng hợp</span></div>
+          <div class="flex flex-wrap items-center justify-between gap-3"><div><h2 class="font-bold text-slate-900">Dự báo thời điểm kiểm tra / thay pin</h2><p class="mt-1 text-sm text-slate-500">Gradient Boosting Regression · {{ model?.metadata?.sampleCount || '—' }} mẫu huấn luyện và đánh giá</p></div><span class="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">Nguồn huấn luyện: dữ liệu tổng hợp</span></div>
           <p class="mt-3 text-sm leading-6 text-slate-600">Mô hình học từ các chu kỳ pin tổng hợp. Giờ mượn là dữ liệu đại diện, không phải thời gian bật thiết bị. Kết quả hỗ trợ lên lịch kiểm tra, chưa thay thế đo pin thực tế.</p>
           <p v-if="modelError" role="alert" class="mt-3 text-red-600">{{ modelError }}</p>
           <div v-if="metrics" class="mt-4 grid gap-3 sm:grid-cols-3">

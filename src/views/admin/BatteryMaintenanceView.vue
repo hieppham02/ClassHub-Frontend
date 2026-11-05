@@ -170,7 +170,7 @@ onUnmounted(() => { listEpoch++; detailEpoch++; optionsEpoch++ })
         <AdminPageTitle eyebrow="Cơ sở vật chất" title="Theo dõi pin micro" />
         <button class="primary" :disabled="busy || !optionsReady" @click="openProfile()">Thêm micro theo dõi</button>
       </header>
-      <p class="text-sm text-slate-500">Ưu tiên kiểm tra theo kết quả đã ghi nhận. Dự báo AI thử nghiệm nằm ở mục AI & sử dụng phòng.</p>
+      <p class="text-sm text-slate-500">Ưu tiên kiểm tra theo kết quả đã ghi nhận. Dự báo AI nằm ở mục AI & sử dụng phòng.</p>
       <p v-if="success" role="status" class="notice good">{{ success }}</p>
       <p v-if="error" role="alert" class="notice bad">{{ error }}</p>
       <section class="panel">
